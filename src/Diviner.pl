@@ -113,6 +113,11 @@ $tildedir =~ s/\n|\r//g;
 $tildedir = ConfirmDirectory($tildedir);
 close($tildedir_check);
 
+
+# Let the user know that we're getting to work
+DisplayProgress('startup');
+
+
 my $SpeciesGuide = OpenInputFile($ARGV[1]);
 my %SpeciesToGenomes;
 my %SpeciesHasGTF;
@@ -138,6 +143,7 @@ while (my $line = <$SpeciesGuide>) {
 	print "  Warning: Couldn't find existing 'hsi' index for genome file '$genome'\n";
 	print "           Index creation may take a couple of seconds\n\n";
 	RunSystemCommand($sindex.' '.$genome);
+	print "  Indexing successful!\n\n";
     }
 
     # Get chromosome lengths for the genome
@@ -196,8 +202,14 @@ while (my $fname = readdir($FinalMSAs)) {
 }
 closedir($FinalMSAs);
 
+
 # Are we asking for too many cpus?
 $num_cpus = Min($num_cpus,scalar(@GeneList));
+
+
+# Things are looking good if we've made it this far without complaint,
+# so let's provide a smidgen of feedback
+InitProgressVars($outdirname.'.progress',$num_cpus,scalar(@GeneList));
 
 
 # Look away, children, the processes are spawning!
@@ -209,6 +221,7 @@ my $thread_portion = int(scalar(@GeneList)/$num_cpus);
 my $start_gene_id = $threadID * $thread_portion;
 my $end_gene_id = (1+$threadID) * $thread_portion;
 $end_gene_id = scalar(@GeneList) if ($threadID == $num_cpus-1);
+
 
 # Name temporary filenames that we'll want to use (and, while we're at it,
 # fill in all of the wild 'n' wacky tblastn arguments we'll be using).
@@ -231,6 +244,9 @@ my $total_ghost_exons = 0;
 my $total_ghosts_busted = 0;
 my @GhostlyGenes;
 for (my $gene_id=$start_gene_id; $gene_id<$end_gene_id; $gene_id++) {
+
+    my $completed_genes = $gene_id - $start_gene_id;
+    ReportProgress('main-loop|'.$threadID.'|'.$completed_genes);
 
     my $gene  = $GeneList[$gene_id];
     my $fname = $final_results_dirname.$gene.'.afa';
@@ -306,6 +322,8 @@ if ($threadID) {
 }
 while (wait() != -1) {}
 
+# Let the user know they're in the home-stretch!
+DisplayProgress('final');
 
 # Woo-hoo!  Janitorial work is my favorite!
 for ($threadID=0; $threadID<$num_cpus; $threadID++) {
