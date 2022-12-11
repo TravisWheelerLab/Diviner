@@ -349,12 +349,7 @@ sub FindDependencies
     # We'll look for our files in different places depending on whether
     # we think we're in a docker container or a source-built situation
     my @RequiredFiles;
-    push(@RequiredFiles,$location.'Quilter2.pl');
-    push(@RequiredFiles,$location.'ExonWeaver');
-    push(@RequiredFiles,$location.'FastMap2');
-    push(@RequiredFiles,$location.'MapsToMSAs.pl');
-    push(@RequiredFiles,$location.'MultiSeqNW');
-    push(@RequiredFiles,$location.'FinalMSA.pl');
+    push(@RequiredFiles,$location.'Diviner.pl');
 
     # The actual "dependencies" are going to differ depending on whether
     # or not we're in the land of building from source or running in a
@@ -365,8 +360,6 @@ sub FindDependencies
 	push(@RequiredFiles,$location.'hsi/build/sindex');
 	push(@RequiredFiles,$location.'hsi/build/sfetch');
 	push(@RequiredFiles,$location.'hsi/build/sstat');
-	push(@RequiredFiles,$location.'spaln/src/spaln');
-	push(@RequiredFiles,$location.'blat/bin/blat');	
 
 	# For Diviner, we'll need to know which tblastn executable to use
 	my $UnameCmd = OpenSystemCommand('uname -a |');
@@ -386,8 +379,6 @@ sub FindDependencies
 	push(@RequiredFiles,$location.'sindex');
 	push(@RequiredFiles,$location.'sfetch');
 	push(@RequiredFiles,$location.'sstat');
-	push(@RequiredFiles,$location.'spaln');
-	push(@RequiredFiles,$location.'blat');		
         push(@RequiredFiles,$location.'tblastn.linux.x86_64');
 
     }
