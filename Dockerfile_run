@@ -1,0 +1,25 @@
+FROM traviswheelerlab/diviner-build AS build
+
+RUN mkdir /diviner
+WORKDIR /diviner
+
+COPY CMakeLists.txt ./
+COPY src ./src
+COPY dependencies ./dependencies
+RUN ls -la .
+
+RUN cmake . && \
+    make
+
+FROM debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y \
+        perl \
+        rsync \
+        wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /diviner/build /opt/diviner
+ENV PATH=$PATH:/opt/diviner
+

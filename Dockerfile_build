@@ -1,0 +1,25 @@
+FROM debian:bullseye-slim
+
+ARG cmake_src=https://github.com/Kitware/CMake/releases/download
+ARG cmake_version=3.21.2
+ARG cmake_arch=x86_64
+ARG cmake_name=cmake-${cmake_version}-linux-${cmake_arch}
+
+ADD ${cmake_src}/v${cmake_version}/${cmake_name}.tar.gz ./
+RUN tar xf ${cmake_name}.tar.gz
+RUN mv ${cmake_name} /opt/cmake
+
+RUN apt-get update && apt-get install -y \
+        g++ \
+        gcc \
+        libpng-dev \
+        libpng16-16 \
+        make \
+        unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV PATH=${PATH}:/opt/cmake/bin
+
+VOLUME /code
+WORKDIR /code
