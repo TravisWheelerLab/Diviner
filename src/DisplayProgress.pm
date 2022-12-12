@@ -90,22 +90,25 @@ sub ReportProgress
 	
     } elsif ($part eq 'main-loop' && rand() < 0.3) {
 
-	my $thread_completed_genes = $Data[2];
-	system("echo \"$thread_completed_genes\" >> $DispProg_dirname$threadID");
+	my $completed_genes = $Data[2];
 
-	if ($threadID == 0) {
+	if ($threadID) {
 
-	    my $completed_genes = $thread_completed_genes;
+	    open(my $ProgFile,'>',$DispProg_dirname.$threadID);
+	    print $ProgFile "$completed_genes\n";
+	    close($ProgFile);
+
+	} else {
+
 	    for (my $i=1; $i<$DispProg_cpus; $i++) {
 
 		my $thread_prog_filename = $DispProg_dirname.$threadID; 
 		if (-e $thread_prog_filename) {
 
-		    open(my $ThreadProgress,"tail -n 1 $thread_prog_filename |");
+		    open(my $ThreadProgress,'<',$thread_prog_filename);
 		    my $thread_prog_count = <$ThreadProgress>;
 		    close($ThreadProgress);
-
-		    $thread_prog_count =~ /^(\d+)\s*$/;
+		    $thread_prog_count =~ /^(\d+)/;
 		    $completed_genes += $1;
 		    
 		}
