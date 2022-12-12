@@ -115,7 +115,7 @@ close($tildedir_check);
 
 
 # Let the user know that we're getting to work
-DisplayProgress('startup');
+RecordProgress('startup');
 
 
 my $SpeciesGuide = OpenInputFile($ARGV[1]);
@@ -323,7 +323,7 @@ if ($threadID) {
 while (wait() != -1) {}
 
 # Let the user know they're in the home-stretch!
-DisplayProgress('final');
+ReportProgress('final');
 
 # Woo-hoo!  Janitorial work is my favorite!
 for ($threadID=0; $threadID<$num_cpus; $threadID++) {
