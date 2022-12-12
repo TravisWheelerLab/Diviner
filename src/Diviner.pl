@@ -115,7 +115,7 @@ close($tildedir_check);
 
 
 # Let the user know that we're getting to work
-RecordProgress('startup');
+ReportProgress('startup');
 
 
 my $SpeciesGuide = OpenInputFile($ARGV[1]);
