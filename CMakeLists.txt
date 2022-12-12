@@ -8,6 +8,8 @@ project(
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY build)
 
+file(MAKE_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+
 # Custom target for handling dependencies, Perl scripts, and shell scripts. We
 # just move all these files to the build directory to aid in distribution and
 # installation. These will be automatically run by the build.
