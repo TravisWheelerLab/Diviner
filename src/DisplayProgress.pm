@@ -122,8 +122,9 @@ sub ReportProgress
     } elsif ($part eq 'final') {
 
 	PrintProgress($status."Performing final cleanup and data aggregation");
-	print "\n"; # Bonus newline!
 	system("rm -rf \"$DispProg_dirname\"");
+	
+	PrintProgress(" "); # Wipe the progress display
 	
     }
     
