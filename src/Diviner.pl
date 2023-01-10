@@ -30,6 +30,8 @@ sub GetB62Score;
 sub MultiAminoSeqAli;
 sub GetMapSummaryStats;
 sub CollapseAndCountOverlaps;
+sub RecordHitsByPctID;
+
 
 # Added 'X' as ambiguity character (index 20)
 my @Blosum62
@@ -377,6 +379,10 @@ if ($total_ghost_exons == 0) {
 # We'll write out summary statistics for the full collection of genes
 # that had hits
 GetMapSummaryStats(\@GhostlyGenes);
+
+# Additionally, we'll write out the (easier on the eyes) file that lists
+# each exon that we found, in order of percent alignment identity.
+RecordHitsByPctID();
 
 # WOOOOOOO, WE FOUND AT LEAST ONE THING TO POSSIBLY NOT CROSS-MAP!
 my $bust_rate = int(1000.0*$total_ghosts_busted/$total_ghost_exons)/10.0;
@@ -4053,6 +4059,181 @@ sub CollapseAndCountOverlaps
 
     return ($num_exons,$num_known);
     
+}
+
+
+
+
+
+
+
+#################################################################
+#
+#  Function:  RecordHitsByPctID
+#
+sub RecordHitsByPctID
+{
+    
+    my $genesdirname = ConfirmDirectory($outdirname.'Results-by-Gene');
+
+    my $max_gene_len = 0;
+    my $max_species_len = 0;
+    my $max_ali_len = 0;
+    my $max_chr_len = 0;
+    
+    my $GenesDir = OpenDirectory($genesdirname);
+    my %PctIDtoHits;
+    while (my $gene = readdir($GenesDir)) {
+	
+	my $genealisdirname = ConfirmDirectory($genesdirname.$gene).'alignments/';
+	next if (!(-d $genealisdirname));
+	
+	$gene =~ s/\/$//;
+	
+	if (length($gene) > $max_gene_len) {
+	    $max_gene_len = length($gene);
+	}
+	
+	my $AliDir = OpenDirectory($genealisdirname);
+	while (my $ali = readdir($AliDir)) {
+	    
+	    next if ($ali !~ /^([^\.]+)\./);
+	    my $target_species = $1;
+	    
+	    my $alifname = $genealisdirname.$ali;
+	    my $alif = OpenInputFile($alifname);
+	    
+	    my $genome_coords;
+	    my $is_novel_exon;
+	    while (my $line = <$alif>) {
+		
+		if ($line =~ /Target \: \S+ (\S+)/) {
+		    $genome_coords = $1;
+		    next;
+		}
+		if ($line =~ /\: Novel exon/) {
+		    $is_novel_exon=1;
+		    next;
+		}
+		if ($line =~ /\: Overlaps/) {
+		    $is_novel_exon=0;
+		    next;
+		}
+		
+		if ($line =~ /\: (\S+) \/ aminos (\d+)\.\.(\d+) \/ (\S+)\% ali/) {
+		    
+		    my $source_species = $1;
+		    my $ali_len = $3 - $2 + 1;
+		    my $pct_id = $4;
+		    
+		    my $hash_val = $gene.':'.$source_species.'>'.$target_species.'('.$genome_coords.'):'.$ali_len.'&'.$is_novel_exon;
+		    
+		    if ($PctIDtoHits{$pct_id}) {
+			$PctIDtoHits{$pct_id} = $PctIDtoHits{$pct_id}.'|'.$hash_val;
+		    } else {
+			$PctIDtoHits{$pct_id} = $hash_val;
+		    }
+		    
+		    if (length($source_species) > $max_species_len) {
+			$max_species_len = length($source_species);
+		    }
+		    if (length($target_species) > $max_species_len) {
+			$max_species_len = length($target_species);
+		    }
+		    if (length($genome_coords)+3 > $max_chr_len) {
+			$max_chr_len = length($genome_coords)+3;
+		    }
+		    if (length($ali_len) > $max_ali_len) {
+			$max_ali_len = length($ali_len);
+		    }
+		    
+		}
+		
+	    }
+	    close($alif);
+	    
+	}
+	closedir($AliDir);
+	
+    }
+    closedir($GenesDir);
+    
+
+    # At long last, we have all the data we need!  Now to just scream
+    # about it!
+    my $OutFile = OpenOutputFile($outdirname.'hits-by-pct-id.out');
+
+    foreach my $pct_id (sort {$b <=> $a} keys %PctIDtoHits) {
+	
+	my %HitsByLen;
+	foreach my $hit (split(/\|/,$PctIDtoHits{$pct_id})) {
+	    $hit =~ /\:(\d+)\&/;
+	    my $len = $1;
+	    if ($HitsByLen{$len}) {
+		$HitsByLen{$len} = $HitsByLen{$len}.'|'.$hit;
+	    } else {
+		$HitsByLen{$len} = $hit;
+	    }
+	}
+	
+	my @OrderedHits;
+	foreach my $len (sort {$b <=> $a} keys %HitsByLen) {
+	    foreach my $hit (split(/\|/,$HitsByLen{$len})) {
+		
+		$hit =~ /^([^\&]+)\&(\d)$/;
+		my $hit_str  = $1;
+		my $is_novel = $2;
+		
+		$hit_str =~ /^([^\:]+)\:(\S+)\>(\S+)(\(\S+\))\:(\d+)/;
+		my $gene = $1;
+		my $source_species = $2;
+		my $target_species = $3;
+		my $target_chr = $4;
+		my $ali_len = $5;
+		
+		while (length($gene) < $max_gene_len) {
+		    $gene = $gene.' ';
+		}
+		while (length($source_species) < $max_species_len) {
+		    $source_species = $source_species.' ';
+		}
+		while (length($target_species) < $max_species_len) {
+		    $target_species = $target_species.' ';
+		}
+		while (length($target_chr) < $max_chr_len) {
+		    $target_chr = $target_chr.' ';
+		}
+		while (length($ali_len) < $max_ali_len) {
+		    $ali_len = ' '.$ali_len;
+		}
+		
+		my $formatted_str;
+		if ($is_novel) { $formatted_str = '[*] '; }
+		else           { $formatted_str = '[ ] '; }
+		$formatted_str = $formatted_str."$gene $source_species -> $target_species ";
+		$formatted_str = $formatted_str."$target_chr $ali_len aminos";
+		
+		push(@OrderedHits,$formatted_str);
+		
+	    }
+	}
+	
+	$pct_id = $pct_id.'%';
+	while (length($pct_id) < 6) {
+	    $pct_id = ' '.$pct_id;
+	}
+	my $spacer = ' ';
+	while (length($spacer) < 6) {
+	    $spacer = ' '.$spacer;
+	}
+	
+	print $OutFile "$pct_id :$OrderedHits[0]\n";
+	for (my $i=1; $i<scalar(@OrderedHits); $i++) {
+	    print $OutFile "$spacer  $OrderedHits[$i]\n";
+	}
+	
+    }
+
 }
 
 
