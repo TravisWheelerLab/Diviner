@@ -98,6 +98,7 @@ my %Options = %{$options_ref};
 my $num_cpus = $Options{cpus};
 my $outdirname = CreateDirectory($Options{outdirname});
 my $outgenesdir = CreateDirectory($outdirname.'Results-by-Gene');
+my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
 my $save_msas = $Options{savemsas}; # Do we want to write our spliced MSAs to files?
 my $bad_ali_cutoff = $Options{alicutoff};
 
@@ -3820,7 +3821,7 @@ sub GetMapSummaryStats
 		my $target_species_region = $1;
 
 		# Write to this species' .bed file roight quicke!
-		open(my $TargetBed,'>>',$outdirname.$target_species.'.bed');
+		open(my $TargetBed,'>>',$bedfilesdir.$target_species.'.bed');
 
 		$target_species_region =~ /([^\:]+)\:(\d+)\.\.(\d+)/;
 		my $chr = $1;
@@ -4161,7 +4162,7 @@ sub RecordHitsByPctID
 
     # At long last, we have all the data we need!  Now to just scream
     # about it!
-    my $OutFile = OpenOutputFile($outdirname.'hits-by-pct-id.out');
+    my $OutFile = OpenOutputFile($outdirname.'Hits-by-Pct-ID.out');
 
     foreach my $pct_id (sort {$b <=> $a} keys %PctIDtoHits) {
 	
