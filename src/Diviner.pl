@@ -388,13 +388,15 @@ RecordHitsByPctID();
 # WOOOOOOO, WE FOUND AT LEAST ONE THING TO POSSIBLY NOT CROSS-MAP!
 my $bust_rate = int(1000.0*$total_ghosts_busted/$total_ghost_exons)/10.0;
 print "\n";
-print "  $total_ghost_exons absent exon homolog";
+print "  $total_ghost_exons missing exon homolog";
 print "s" if ($total_ghost_exons != 1);
 print " observed in proteoform set,\n";
-if ($total_ghosts_busted == 1) {
-    print "  1 ($bust_rate\%) of which has likely coding sequence in its genome\n";
+if ($total_ghosts_busted == 0) {
+    print "  BUT mapping to target genomes yielded no hits\n";
 } else {
-    print "  $total_ghosts_busted ($bust_rate\%) of which have likely coding sequence in their genomes\n";
+    print "  $total_ghosts_busted ($bust_rate\%) of which map";
+    print "s" if ($total_ghosts_busted == 1);
+    print " to target genomic sequence\n";
 }
 print "\n";
 print "  Results in '$outdirname' (Summary info in file 'Search-Summary.out')\n";
