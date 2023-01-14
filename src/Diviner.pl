@@ -386,13 +386,13 @@ GetMapSummaryStats(\@GhostlyGenes);
 # Additionally, we'll write out the (easier on the eyes) file that lists
 # each exon that we found, in order of percent alignment identity.
 my $results_overview_str = RecordHitsByPctID();
-print "$results_overview_str";
+print "\n$results_overview_str\n";
 
 
 # THAT'S IT!
 print "\n";
-print "  Results in '$outdirname' (Summary info in file 'Search-Summary.out')\n";
-print "\n";
+print "  Diviner complete; results in $outdirname\n";
+print "\n\n";
 
 
 1;
@@ -4262,9 +4262,7 @@ sub RecordHitsByPctID
 
 
     # We have at least *some* hits to report!
-    my $results_overview_str = "\n";
-
-    $results_overview_str = $results_overview_str."  Total number of exons uncovered by Diviner: $total_hits\n";
+    my $results_overview_str = "  Total number of exons uncovered by Diviner: $total_hits\n";
     foreach my $target_species (sort keys %TargetToHits) {
 	$results_overview_str = $results_overview_str."    + $target_species: $TargetToHits{$target_species}\n";
     }
@@ -4284,7 +4282,6 @@ sub RecordHitsByPctID
 	}
 
     }
-    $results_overview_str = $results_overview_str."\n";
 
     # Told 'ya we'd return this string!
     return $results_overview_str;
