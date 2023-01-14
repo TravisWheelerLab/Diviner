@@ -3910,9 +3910,10 @@ sub GetMapSummaryStats
     close($outf);
 
     # Now we'll run through each of our target species and give a little bit of info.
+    my $overviews_dirname = CreateDirectory($outdirname.'Hit-Overviews-by-Species');
     foreach my $species (keys %TargetSpeciesToSuggested) {
 
-	$outf = OpenOutputFile($outdirname.$species.'.overview.out');
+	$outf = OpenOutputFile($overviews_dirname.$species.'.overview.out');
 
 	my $num_suggested_exons = $TargetSpeciesToSuggested{$species};
 	my $num_annotated_exons = 0;
