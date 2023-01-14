@@ -377,27 +377,19 @@ if ($total_ghost_exons == 0) {
 
 }
 
+
 # We'll write out summary statistics for the full collection of genes
 # that had hits
 GetMapSummaryStats(\@GhostlyGenes);
 
+
 # Additionally, we'll write out the (easier on the eyes) file that lists
 # each exon that we found, in order of percent alignment identity.
-RecordHitsByPctID();
+my $results_overview_str = RecordHitsByPctID();
+print "$results_overview_str";
 
-# WOOOOOOO, WE FOUND AT LEAST ONE THING TO POSSIBLY NOT CROSS-MAP!
-my $bust_rate = int(1000.0*$total_ghosts_busted/$total_ghost_exons)/10.0;
-print "\n";
-print "  $total_ghost_exons missing exon homolog";
-print "s" if ($total_ghost_exons != 1);
-print " observed in proteoform set,\n";
-if ($total_ghosts_busted == 0) {
-    print "  BUT mapping to target genomes yielded no hits\n";
-} else {
-    print "  $total_ghosts_busted ($bust_rate\%) of which map";
-    print "s" if ($total_ghosts_busted == 1);
-    print " to target genomic sequence\n";
-}
+
+# THAT'S IT!
 print "\n";
 print "  Results in '$outdirname' (Summary info in file 'Search-Summary.out')\n";
 print "\n";
@@ -4083,6 +4075,13 @@ sub RecordHitsByPctID
     my $max_species_len = 0;
     my $max_ali_len = 0;
     my $max_chr_len = 0;
+
+    # We'll gather some summary statistics to (potentially) output
+    # at the very end of the script's execution
+    my $total_hits = 0;
+    my $total_non_gtf_hits = 0;
+    my %TargetToHits;
+    my %TargetToNonGTFHits;
     
     my $GenesDir = OpenDirectory($genesdirname);
     my %PctIDtoHits;
@@ -4114,13 +4113,31 @@ sub RecordHitsByPctID
 		    $genome_coords = $1;
 		    next;
 		}
+
 		if ($line =~ /\: Novel exon/) {
+
+		    $total_hits++;
+		    if ($TargetToHits{$target_species}) { $TargetToHits{$target_species}++; }
+		    else                                { $TargetToHits{$target_species}=1; }
+		    
+		    $total_non_gtf_hits++;
+		    if ($TargetToNonGTFHits{$target_species}) { $TargetToNonGTFHits{$target_species}++; }
+		    else                                      { $TargetToNonGTFHits{$target_species}=1; }
+		    
 		    $is_novel_exon=1;
 		    next;
+
 		}
+
 		if ($line =~ /\: Overlaps/) {
+
+		    $total_hits++;
+		    if ($TargetToHits{$target_species}) { $TargetToHits{$target_species}++; }
+		    else                                { $TargetToHits{$target_species}=1; }
+		    
 		    $is_novel_exon=0;
 		    next;
+
 		}
 		
 		if ($line =~ /\: (\S+) \/ aminos (\d+)\.\.(\d+) \/ (\S+)\% ali/) {
@@ -4236,6 +4253,41 @@ sub RecordHitsByPctID
 	}
 	
     }
+
+    
+    # Don't go breakin' my heart, now  :'(
+    if ($total_hits == 0) {
+	return "\n  No novel coding regions uncovered\n\n";
+    }
+
+
+    # We have at least *some* hits to report!
+    my $results_overview_str = "\n";
+
+    $results_overview_str = $results_overview_str."  Total number of exons uncovered by Diviner: $total_hits\n";
+    foreach my $target_species (sort keys %TargetToHits) {
+	$results_overview_str = $results_overview_str."    + $target_species: $TargetToHits{$target_species}\n";
+    }
+    $results_overview_str = $results_overview_str."\n";
+
+    
+    # Did we have any extra-novel (i.e., non-GTF overlapping) hits?
+    if ($total_non_gtf_hits == 0) {
+
+	$results_overview_str = $results_overview_str."  All uncovered exons overlap with GTF-annotated coding regions\n";
+	
+    } else {
+
+	$results_overview_str = $results_overview_str."  Exons without overlapping GTF annotations:  $total_non_gtf_hits\n";
+	foreach my $target_species (sort keys %TargetToNonGTFHits) {
+	    $results_overview_str = $results_overview_str."    + $target_species: $TargetToNonGTFHits{$target_species}\n";
+	}
+
+    }
+    $results_overview_str = $results_overview_str."\n";
+
+    # Told 'ya we'd return this string!
+    return $results_overview_str;
 
 }
 
