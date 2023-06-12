@@ -3289,58 +3289,64 @@ sub LocalMatchMismatchAli
 	}
     }
 
-    # We'll set our condition for killing the alignment as being a window of 8
-    # aminos where 6 of the positions are gaps or mismatches.
-    my $window_size = 8;
-    my $min_matches = 2;
-    my $kill_trigger # Scores below this terminate our walk
-	= ($window_size-$min_matches) * Max($gap,$mismatch) + $min_matches*$match;
+    
+    # Our approach to trimming in the alignment is that we'll allow our
+    # quality to "charge" up to a maximum value (it starts fully "charged"),
+    # where mismatches/gaps expend charge and matches gain charge.
+    # If the quality drops to 0, we end the alignment at the last match pos.
+    my $quality = 4;
 
-    # Scan left
-    my $left_end_pos = $key_pos - int($window_size/2);
-    if ($left_end_pos > 0 && $left_end_pos + $window_size < $trace_len) {
+    # Starting from key_pos, walk left until the "quality" slips to 0
+    my $left_end_pos = $key_pos-1;
+    my $left_quality = $quality;
+    while ($left_end_pos >= 0) {
 
-	my $window_score = 0;
-	for (my $pos=0; $pos<$window_size; $pos++) {
-	    $window_score += $TraceScore[$left_end_pos+$pos];
+	if ($TraceScore[$left_end_pos] == $match) {
+	    $left_quality = Max($quality,$left_quality+1);
+	} else {
+	    $left_quality--;
 	}
+	
+	last if ($left_quality == 0);
+	$left_end_pos--;
+	
+    }
 
-	while ($window_score >= $kill_trigger && $left_end_pos) {
-	    $left_end_pos--;
-	    $window_score -= $TraceScore[$left_end_pos+$window_size];
-	    $window_score += $TraceScore[$left_end_pos];
+    # If the quality went to zero, go right until our the first match
+    if ($left_quality == 0) {
+	while ($TraceScore[$left_end_pos] != $match) {
+	    $left_end_pos++;
 	}
-
     } else {
 	$left_end_pos = 0;
     }
 
-    # Scan right
-    my $right_end_pos = $key_pos + int($window_size/2);
-    if ($right_end_pos < $trace_len-1 && $right_end_pos - $window_size >= 0) {
+    
+    # Now do the same thing, but walking right
+    my $right_end_pos = $key_pos+1;
+    my $right_quality = $quality;
+    while ($right_end_pos < $trace_len) {
 
-	my $window_score = 0;
-	for (my $pos=0; $pos<$window_size; $pos++) {
-	    $window_score += $TraceScore[$right_end_pos-$pos];
-	}
-
-	while ($window_score >= $kill_trigger && $right_end_pos < $trace_len-1) {
-	    $right_end_pos++;
-	    $window_score -= $TraceScore[$right_end_pos-$window_size];
-	    $window_score += $TraceScore[$right_end_pos];
+	if ($TraceScore[$right_end_pos] == $match) {
+	    $right_quality = Max($quality,$right_quality+1);
+	} else {
+	    $right_quality--;
 	}
 	
-    } else {
-	$right_end_pos = $trace_len-1;
+	last if ($right_quality == 0);
+	$right_end_pos--;
+	
     }
 
-    # Eat inwards until we hit a match position
-    while ($TraceScore[$left_end_pos] != $match) {
-	$left_end_pos++;
+    # If the quality went to zero, go left until our the first match
+    if ($right_quality == 0) {
+	while ($TraceScore[$right_end_pos] != $match) {
+	    $right_end_pos--;
+	}
+    } else {
+	$right_end_pos = 0;
     }
-    while ($TraceScore[$right_end_pos] != $match) {
-	$right_end_pos--;
-    }
+
 
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
