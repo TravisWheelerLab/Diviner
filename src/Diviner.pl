@@ -3300,7 +3300,7 @@ sub LocalMatchMismatchAli
     }
 
     # If the quality went to zero, go left until our the first match
-    while ($Seq1[$ITrace[$right_end_pos]] != $Seq2[$JTrace[$right_end_pos]]) {
+    while ($Seq1[$ITrace[$right_end_pos]] ne $Seq2[$JTrace[$right_end_pos]]) {
 	$right_end_pos--;
     }
 
