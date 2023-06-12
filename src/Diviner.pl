@@ -2568,16 +2568,8 @@ sub RecordGhostMSAs
 
 		push(@FrameTranslations,$trans_str);
 
-		# OUTDATED: Just get score from match / mismatch scoring
-		## Perform a quick alignment to each source amino sequence, summing the
-		## scores.
-		#my $sum_score = 0;
-		#foreach my $source_seq_str (@SourceSeqs) {
-		#$sum_score += MatchMismatchScore($source_seq_str,$trans_str);
-		#}
-
-		# NEW APPROACH: Get the best local score along with start / end
-		#   coordinates, relative to the search amino sequence.
+		# We'll get the best local score along with start / end
+		# coordinates, relative to the search amino sequence.
 		my $sum_score = 0;
 		for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
 
@@ -2877,11 +2869,7 @@ sub RecordGhostMSAs
 
 		    $MSA[$i+2][$msa_len]   = ' ';
 
-		    # Approach 1: Uppercase for matches, lowercase for mismatches
-		    #$MSA[$i+2][$msa_len+1] = $Col[$i+1]; # Skip 0 (the target)
-		    #$MSA[$i+2][$msa_len+1] = lc($Col[$i+1]) if ($Col[0] ne $Col[$i+1]);
-
-		    # Approach 2: Periods for matches, lowercase for mismatches
+		    # Periods for matches, lowercase for mismatches
 		    if ($Col[$i+1] =~ /[A-Z]/ && $Col[$i+1] eq $Col[0]) {
 			$MSA[$i+2][$msa_len+1] = '.';
 			$SourceMatches[$i]++;
@@ -3266,29 +3254,6 @@ sub LocalMatchMismatchAli
     }
     $trace_len--;
 
-    # Determine the "score contribution" for each cell
-    my @TraceScore;
-    $TraceScore[0] = 0;
-    my $key_pos = 0; # Where do we pass through [max_i][max_j]?
-    for (my $pos=1; $pos<$trace_len; $pos++) {
-
-	# Knock this check out first
-	if ($ITrace[$pos] == $max_i && $JTrace[$pos] == $max_j) {
-	    $key_pos = $pos;
-	}
-
-	# What was this cell's contribution to the score of the maximum path?
-	if ($ITrace[$pos] == $ITrace[$pos-1]+1 && $JTrace[$pos] == $JTrace[$pos-1]+1) {
-	    if ($Seq1[$ITrace[$pos]-1] eq $Seq2[$JTrace[$pos]-1]) {
-		$TraceScore[$pos] = $match;
-	    } else {
-		$TraceScore[$pos] = $mismatch;
-	    }
-	} else {
-	    $TraceScore[$pos] = $gap;
-	}
-    }
-
     
     # Our approach to trimming in the alignment is that we'll allow our
     # quality to "charge" up to a maximum value (it starts fully "charged"),
@@ -3299,10 +3264,10 @@ sub LocalMatchMismatchAli
     # Starting from key_pos, walk left until the "quality" slips to 0
     my $left_end_pos = $key_pos-1;
     my $left_quality = $quality;
-    while ($left_end_pos >= 0) {
+    while ($left_end_pos > 0) {
 
-	if ($TraceScore[$left_end_pos] == $match) {
-	    $left_quality = Max($quality,$left_quality+1);
+	if ($Seq1[$ITrace[$left_end_pos]] eq $Seq2[$JTrace[$left_end_pos]]) {
+	    $left_quality = Min($quality,$left_quality+1);
 	} else {
 	    $left_quality--;
 	}
@@ -3312,39 +3277,31 @@ sub LocalMatchMismatchAli
 	
     }
 
-    # If the quality went to zero, go right until our the first match
-    if ($left_quality == 0) {
-	while ($TraceScore[$left_end_pos] != $match) {
-	    $left_end_pos++;
-	}
-    } else {
-	$left_end_pos = 0;
+    # Walk right until our the first match
+    while ($Seq1[$ITrace[$left_end_pos]] ne $Seq2[$JTrace[$left_end_pos]]) {
+	$left_end_pos++;
     }
 
     
-    # Now do the same thing, but walking right
+    # Now do the same thing, but to the right
     my $right_end_pos = $key_pos+1;
     my $right_quality = $quality;
-    while ($right_end_pos < $trace_len) {
+    while ($right_end_pos < $trace_len-1) {
 
-	if ($TraceScore[$right_end_pos] == $match) {
-	    $right_quality = Max($quality,$right_quality+1);
+	if ($Seq1[$ITrace[$right_end_pos]] eq $Seq2[$JTrace[$right_end_pos]]) {
+	    $right_quality = Min($quality,$right_quality+1);
 	} else {
 	    $right_quality--;
 	}
 	
 	last if ($right_quality == 0);
-	$right_end_pos--;
+	$right_end_pos++;
 	
     }
 
     # If the quality went to zero, go left until our the first match
-    if ($right_quality == 0) {
-	while ($TraceScore[$right_end_pos] != $match) {
-	    $right_end_pos--;
-	}
-    } else {
-	$right_end_pos = 0;
+    while ($Seq1[$ITrace[$right_end_pos]] != $Seq2[$JTrace[$right_end_pos]]) {
+	$right_end_pos--;
     }
 
 
