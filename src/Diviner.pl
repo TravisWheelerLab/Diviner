@@ -3203,6 +3203,7 @@ sub LocalMatchMismatchAli
 
     # Halfway(-ish) there!  Time to trace our way back through the top-left quad
     $Matrix[$i][$j] = $score_save;
+    my $key_pos = scalar(@ITrace)-1;
 
     while ($i && $j) {
 
@@ -3236,6 +3237,7 @@ sub LocalMatchMismatchAli
 	push(@JTrace,$j);
     }
 
+    
     # Awesome!  Before we make any more SWEET progress, note that our traceback
     # is backwards, so we need to flip it around
     my $trace_len = scalar(@ITrace);
@@ -3254,6 +3256,7 @@ sub LocalMatchMismatchAli
     }
     $trace_len--;
 
+    $key_pos = $trace_len - $key_pos;
     
     # Our approach to trimming in the alignment is that we'll allow our
     # quality to "charge" up to a maximum value (it starts fully "charged"),
