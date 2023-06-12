@@ -3287,7 +3287,7 @@ sub LocalMatchMismatchAli
 
     
     # Now do the same thing, but to the right
-    my $right_end_pos = $key_pos+1;
+    my $right_end_pos = $key_pos;
     my $right_quality = $quality;
     while ($right_end_pos < $trace_len-1) {
 
