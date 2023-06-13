@@ -3266,11 +3266,13 @@ sub LocalMatchMismatchAli
 
     # Starting from key_pos, walk left until the "quality" slips to 0
     my $left_end_pos = $key_pos-1;
+    my $left_last_match = $key_pos;
     my $left_quality = $quality;
     while ($left_end_pos > 0 && $ITrace[$left_end_pos] && $JTrace[$left_end_pos]) {
 
 	if ($Seq1[$ITrace[$left_end_pos]] eq $Seq2[$JTrace[$left_end_pos]]) {
 	    $left_quality = Min($quality,$left_quality+1);
+	    $left_last_match = $left_end_pos;
 	} else {
 	    $left_quality--;
 	}
@@ -3280,19 +3282,15 @@ sub LocalMatchMismatchAli
 	
     }
 
-    # Walk right until our the first match
-    while ($Seq1[$ITrace[$left_end_pos]] ne $Seq2[$JTrace[$left_end_pos]]) {
-	$left_end_pos++;
-    }
-
-    
     # Now do the same thing, but to the right
-    my $right_end_pos = $key_pos;
+    my $right_end_pos = $key_pos+1;
+    my $right_last_match = $key_pos;
     my $right_quality = $quality;
     while ($right_end_pos < $trace_len-1 && $ITrace[$right_end_pos] < $len1 && $JTrace[$right_end_pos] < $len2) {
 
 	if ($Seq1[$ITrace[$right_end_pos]] eq $Seq2[$JTrace[$right_end_pos]]) {
 	    $right_quality = Min($quality,$right_quality+1);
+	    $right_last_match = $right_end_pos;
 	} else {
 	    $right_quality--;
 	}
@@ -3302,18 +3300,12 @@ sub LocalMatchMismatchAli
 	
     }
 
-    # If the quality went to zero, go left until our the first match
-    while ($Seq1[$ITrace[$right_end_pos]] ne $Seq2[$JTrace[$right_end_pos]]) {
-	$right_end_pos--;
-    }
-
-
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
     # NOTE that we need to reduce by 1 because our matrix corresponds to
     #   1-indexed sequences.
-    return ($max_score,$ITrace[$left_end_pos]-1,$ITrace[$right_end_pos]-1,
-	    $JTrace[$left_end_pos]-1,$JTrace[$right_end_pos]-1);
+    return ($max_score,$ITrace[$left_last_match]-1,$ITrace[$right_last_match]-1,
+	    $JTrace[$left_last_match]-1,$JTrace[$right_last_match]-1);
 
 }
 
