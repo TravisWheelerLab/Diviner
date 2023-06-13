@@ -3289,7 +3289,7 @@ sub LocalMatchMismatchAli
     # Now do the same thing, but to the right
     my $right_end_pos = $key_pos;
     my $right_quality = $quality;
-    while ($right_end_pos < $trace_len-1 && $ITrace[$left_end_pos] && $JTrace[$left_end_pos]) {
+    while ($right_end_pos < $trace_len-1 && $ITrace[$right_end_pos] && $JTrace[$right_end_pos]) {
 
 	if ($Seq1[$ITrace[$right_end_pos]] eq $Seq2[$JTrace[$right_end_pos]]) {
 	    $right_quality = Min($quality,$right_quality+1);
