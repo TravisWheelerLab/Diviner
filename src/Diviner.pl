@@ -2547,10 +2547,12 @@ sub RecordGhostMSAs
 	    my $best_frame_num;
 	    my $best_frame_score = 0;
 	    my $best_frame_trans;
-	    my @BestFrameStarts;
-	    my @BestFrameEnds;
-	    my @FrameScores;
+	    my @FrameSourceStarts;
+	    my @FrameSourceEnds;
+	    my @FrameTargetStarts;
+	    my @FrameTargetEnds;
 	    my @FrameTranslations;
+	    my @FrameScores;
 	    for (my $frame=0; $frame<3; $frame++) {
 
 		# Pull in this reading frame
@@ -2578,8 +2580,17 @@ sub RecordGhostMSAs
 
 		    $sum_score += $lmm_score;
 
-		    $BestFrameStarts[$frame][$source_id] = $lmm_s_start;
-		    $BestFrameEnds[$frame][$source_id] = $lmm_s_end;
+		    $FrameSourceStarts[$frame][$source_id] = $lmm_s_start;
+		    $FrameSourceEnds[$frame][$source_id] = $lmm_s_end;
+
+		    if ($source_id == 0 || $lmm_t_start < $FrameTargetStarts[$frame]) {
+			$FrameTargetStarts[$frame] = $lmm_t_start;
+		    }
+
+		    if ($source_id == 0 || $lmm_t_end > $FrameTargetEnds[$frame]) {
+			$FrameTargetEnds[$frame] = $lmm_t_end;
+		    }
+
 		    $FrameScores[$frame][$source_id] = $lmm_score;
 
 		}
@@ -2657,8 +2668,8 @@ sub RecordGhostMSAs
 	    my @SourceSeqChars = split(//,$SourceSeqs[$source_id]);
 
 	    my @AminoMSA;
-	    for (my $char_id=$BestFrameStarts[$best_frame_num][$source_id];
-		 $char_id<=$BestFrameEnds[$best_frame_num][$source_id];
+	    for (my $char_id=$FrameSourceStarts[$best_frame_num][$source_id];
+		 $char_id<=$FrameSourceEnds[$best_frame_num][$source_id];
 		 $char_id++) {
 		push(@AminoMSA,$SourceSeqChars[$char_id]);
 	    }
@@ -2670,8 +2681,8 @@ sub RecordGhostMSAs
 		@SourceSeqChars = split(//,$SourceSeqs[$source_id]);
 
 		my @SourceAliChars;
-		for (my $char_id=$BestFrameStarts[$best_frame_num][$source_id];
-		     $char_id<=$BestFrameEnds[$best_frame_num][$source_id];
+		for (my $char_id=$FrameSourceStarts[$best_frame_num][$source_id];
+		     $char_id<=$FrameSourceEnds[$best_frame_num][$source_id];
 		     $char_id++) {
 		    push(@SourceAliChars,$SourceSeqChars[$char_id]);
 		}
@@ -2680,49 +2691,71 @@ sub RecordGhostMSAs
 		@AminoMSA = @{$amino_msa_ref};
 
 	    }
-	    
+
 	    # Correcting the amino ranges (to reflect precise aminos used in MSA)
 	    for (my $meta_id=0; $meta_id<$num_matched; $meta_id++) {
+
 		$source_id = $MatchedSourceIDs[$meta_id];
 		$SourceAminoRanges[$source_id] =~ /^(\d+)\.\./;
 		my $amino_range_start = $1;
-		my $true_amino_range_start = $amino_range_start + $BestFrameStarts[$best_frame_num][$source_id];
-		my $true_amino_range_end = $amino_range_start + $BestFrameEnds[$best_frame_num][$source_id];
+		
+		my $true_amino_range_start = $amino_range_start + $FrameSourceStarts[$best_frame_num][$source_id];
+		my $true_amino_range_end = $amino_range_start + $FrameSourceEnds[$best_frame_num][$source_id];
+
 		$SourceAminoRanges[$source_id] = $true_amino_range_start.'..'.$true_amino_range_end;
+
 	    }
 	    
 	    # We align the target sequence last so that it's (perhaps) more of an
 	    # approximation of aligning to an "exon family profile"
-	    my @TargetTrans = split(//,$best_frame_trans);
+	    my @TargetTrans;
+	    my @BestFrameTargetChars = split(//,$FrameTranslations[$best_frame_num]);
+	    for (my $char_id=$FrameTargetStarts[$best_frame_num];
+		 $char_id<=$FrameTargetEnds[$best_frame_num];
+		 $char_id++) {
+		push(@TargetTrans,$BestFrameTargetChars[$char_id]);
+	    }
 
 	    my $amino_msa_ref = MultiAminoSeqAli(\@TargetTrans,\@AminoMSA);
 	    @AminoMSA = @{$amino_msa_ref};
 	    my $amino_msa_len = scalar(@AminoMSA);
 
-	    
+
 	    # What are the actual nucleotide bounds of our putative coding region?
 	    my $true_nucl_start = $search_start;
 	    my $true_nucl_end;
 	    if ($revcomp) {
-		$true_nucl_start -= $best_frame_num;
-		$true_nucl_end = $true_nucl_start+1 - (3 * length($best_frame_trans));
+		$true_nucl_start -= $best_frame_num + (3 * $FrameTargetStarts[$best_frame_num]);
+		$true_nucl_end = $true_nucl_start+1 - (3 * scalar(@TargetTrans));
 	    } else {
-		$true_nucl_start += $best_frame_num;
-		$true_nucl_end = $true_nucl_start-1 + (3 * length($best_frame_trans));
+		$true_nucl_start += $best_frame_num + (3 * $FrameTargetStarts[$best_frame_num]);
+		$true_nucl_end = $true_nucl_start-1 + (3 * scalar(@TargetTrans));
 	    }
 
-	    # If we have translated sequence aligned to nothing, we'll scrape it off
+
+	    # Next, we'll eat into the MSA from each end until we hit a match column
+	    my $start_col = 0;
+	    my $end_col = $amino_msa_len-1;
+
 	    
 	    # 1. Checking the left side
 	    #
-	    my $start_col=0;
 	    while ($start_col<$amino_msa_len) {
 
 		my @Col = split(//,$AminoMSA[$start_col]);
 
+		my $target_char = $Col[0];
+
+		if ($target_char !~ /[A-Z]/) {
+		    $start_col++;
+		    if ($revcomp) { $true_nucl_start -= 3; }
+		    else          { $true_nucl_start += 3; }
+		    next;
+		}
+
 		my $trim_it = 1;
 		for (my $i=1; $i<=$num_matched; $i++) {
-		    if ($Col[$i] ne '-') {
+		    if (uc($Col[$i]) eq $target_char) {
 			$trim_it = 0;
 			last;
 		    }
@@ -2735,30 +2768,25 @@ sub RecordGhostMSAs
 
 	    }
 
-	    # If we didn't scrape anything off, we'll need to see if extending our
-	    # nucleotide pull outwards makes sense
-	    if ($start_col == 0) {
-		for (my $col_id=0; $col_id<$amino_msa_len; $col_id++) {
-		    if ($AminoMSA[$col_id] =~ /^\-/) {
-			$AminoMSA[$col_id] =~ s/^\-/ /;
-			if ($revcomp) { $true_nucl_start += 3; }
-			else          { $true_nucl_start -= 3; }
-		    } else {
-			last;
-		    }
-		}		
-	    }
 
 	    # 2. Checking the right side
 	    #
-	    my $end_col=$amino_msa_len-1;
-	    while ($end_col>=0) {
+	    while ($end_col > $start_col) {
 
 		my @Col = split(//,$AminoMSA[$end_col]);
 
+		my $target_char = $Col[0];
+
+		if ($target_char !~ /[A-Z]/) {
+		    $end_col--;
+		    if ($revcomp) { $true_nucl_end += 3; }
+		    else          { $true_nucl_end -= 3; }
+		    next;
+		}
+
 		my $trim_it = 1;
 		for (my $i=1; $i<=$num_matched; $i++) {
-		    if ($Col[$i] ne '-') {
+		    if (uc($Col[$i]) eq $target_char) {
 			$trim_it = 0;
 			last;
 		    }
@@ -2771,19 +2799,59 @@ sub RecordGhostMSAs
 
 	    }
 
-	    # If we didn't scrape anything off, we'll need to see if extending our
-	    # nucleotide pull outwards makes sense
-	    if ($end_col == $amino_msa_len-1) {
-		for (my $col_id=$amino_msa_len-1; $col_id>=0; $col_id--) {
-		    if ($AminoMSA[$col_id] =~ /^\-/) {
-			$AminoMSA[$col_id] =~ s/^\-/ /;
-			if ($revcomp) { $true_nucl_end -= 3; }
-			else          { $true_nucl_end += 3; }
-		    } else {
-			last;
-		    }
+
+	    # As an additional lil' bit o' cleanup, we'll trim off any
+	    # extra leading gaps from source sequences and adjust their
+	    # true start / end amino coordinates
+	    my @SourceStartOffsets;
+	    my @SourceEndOffsets;
+	    for (my $meta_id=0; $meta_id<$num_matched; $meta_id++) {
+
+		my $col_id = $meta_id+1;
+
+		# Start offset
+		my @Col = split(//,$AminoMSA[$start_col]);
+		my $offset = 0;
+
+		while ($Col[$col_id] ne $Col[0]) {
+
+		    $Col[$col_id] = ' ';
+		    $AminoMSA[$start_col+$offset] = join('',@Col);
+
+		    $offset++;
+		    @Col = split(//,$AminoMSA[$start_col+$offset]);
+
 		}
+
+		$SourceStartOffsets[$meta_id] = $offset;
+
+
+		# End offset
+		@Col = split(//,$AminoMSA[$end_col]);
+		$offset = 0;
+
+		while ($Col[$col_id] ne $Col[0]) {
+
+		    $Col[$col_id] = ' ';
+		    $AminoMSA[$end_col-$offset] = join('',@Col);
+
+		    $offset++;
+		    @Col = split(//,$AminoMSA[$end_col-$offset]);
+
+		}
+
+		$SourceEndOffsets[$meta_id] = $offset;
+
+
+		# Let the record show that the ends are offset!
+		my $source_id = $MatchedSourceIDs[$meta_id];
+		$SourceAminoRanges[$source_id] =~ /^(\d+)\.\.(\d+)$/;
+		my $offset_start = $1 + $SourceStartOffsets[$meta_id];
+		my $offset_end   = $2 - $SourceEndOffsets[$meta_id];
+		$SourceAminoRanges[$source_id] = $offset_start.'..'.$offset_end;
+		
 	    }
+
 
 	    # Before we extend out, record the true start of the translated sequence
 	    my $translation_start = $true_nucl_start;
@@ -2791,14 +2859,16 @@ sub RecordGhostMSAs
 
 	    # The last thing we're going to do is extend out 60 nucls on each side
 	    # of the alignment...
+	    my $nucl_ext_len = 60;
 	    if ($revcomp) {
-		$true_nucl_start += 60;
-		$true_nucl_end   -= 60;
+		$true_nucl_start += $nucl_ext_len;
+		$true_nucl_end   -= $nucl_ext_len;
 	    } else {
-		$true_nucl_start -= 60;
-		$true_nucl_end   += 60;
+		$true_nucl_start -= $nucl_ext_len;
+		$true_nucl_end   += $nucl_ext_len;
 	    }
 	    
+
 	    # Great!  Now that we have our final nucleotide region, let's grab
 	    # those nucleotides.
 	    $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
@@ -2819,16 +2889,21 @@ sub RecordGhostMSAs
 	    my @MSA;
 	    my $msa_len=0;
 	    
+
 	    # 1. The lead-in nucleotides
 	    my $nucl_seq_pos = 0;
-	    while ($nucl_seq_pos < 60) {
+	    while ($nucl_seq_pos < $nucl_ext_len) {
+
 		$MSA[0][$msa_len] = ' ';
 		$MSA[1][$msa_len] = lc($NuclSeq[$nucl_seq_pos]);
+
 		for (my $i=0; $i<$num_matched; $i++) {
 		    $MSA[$i+2][$msa_len] = ' ';
 		}
+
 		$nucl_seq_pos++;
 		$msa_len++;
+
 	    }
 
 	    # 2. The amino MSA
@@ -2885,6 +2960,12 @@ sub RecordGhostMSAs
 		# PROGRESS!
 		$msa_len += 3;
 		
+	    }
+
+	    # We want to correct for any columns that weren't included on account
+	    # of being 'offset' columns on the ends of the alignment
+	    for (my $i=0; $i<$num_matched; $i++) {
+		$SourceMismatches[$i] -= $SourceStartOffsets[$i] + $SourceEndOffsets[$i];
 	    }
 
 	    # 3. The lead-out nucleotides
@@ -3090,8 +3171,8 @@ sub LocalMatchMismatchAli
     for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0; }
     for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0; }
 
-    my $mismatch = -1;
     my $match = 1;
+    my $mismatch = -1;
     my $gap = -1;
     
     # First off, we'll find the highest scoring coordinate under a
@@ -3262,42 +3343,43 @@ sub LocalMatchMismatchAli
     # quality to "charge" up to a maximum value (it starts fully "charged"),
     # where mismatches/gaps expend charge and matches gain charge.
     # If the quality drops to 0, we end the alignment at the last match pos.
-    my $quality = 4;
+    my $quality_cut = 4;
 
     # Starting from key_pos, walk left until the "quality" slips to 0
     my $left_end_pos = $key_pos-1;
     my $left_last_match = $key_pos;
-    my $left_quality = $quality;
+    my $left_quality = $quality_cut;
     while ($left_end_pos > 0 && $ITrace[$left_end_pos] && $JTrace[$left_end_pos]) {
 
 	if ($Seq1[$ITrace[$left_end_pos]] eq $Seq2[$JTrace[$left_end_pos]]) {
-	    $left_quality = Min($quality,$left_quality+1);
+	    $left_quality = Min($quality_cut,$left_quality+1);
 	    $left_last_match = $left_end_pos;
 	} else {
 	    $left_quality--;
+	    last if ($left_quality == 0);
 	}
-	
-	last if ($left_quality == 0);
+
 	$left_end_pos--;
 	
     }
+    
 
     # Now do the same thing, but to the right
     my $right_end_pos = $key_pos+1;
     my $right_last_match = $key_pos;
-    my $right_quality = $quality;
+    my $right_quality = $quality_cut;
     while ($right_end_pos < $trace_len-1 && $ITrace[$right_end_pos] < $len1 && $JTrace[$right_end_pos] < $len2) {
 
 	if ($Seq1[$ITrace[$right_end_pos]] eq $Seq2[$JTrace[$right_end_pos]]) {
-	    $right_quality = Min($quality,$right_quality+1);
+	    $right_quality = Min($quality_cut,$right_quality+1);
 	    $right_last_match = $right_end_pos;
 	} else {
 	    $right_quality--;
+	    last if ($right_quality == 0);
 	}
 	
-	last if ($right_quality == 0);
 	$right_end_pos++;
-	
+
     }
 
     # FINALLY!  Note that we're returning the original max local score,
