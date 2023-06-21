@@ -24,8 +24,7 @@ sub ReduceMSAToSpecies;
 sub FindGhostExons;
 sub FindAliQualityDrops;
 sub RecordGhostMSAs;
-sub MatchMismatchScore;
-sub LocalMatchMismatchAli;
+sub LocalAlign;
 sub GetB62Score;
 sub MultiAminoSeqAli;
 sub GetMapSummaryStats;
@@ -2576,7 +2575,7 @@ sub RecordGhostMSAs
 		for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
 
 		    my ($lmm_score,$lmm_t_start,$lmm_t_end,$lmm_s_start,$lmm_s_end) =
-			LocalMatchMismatchAli($trans_str,$SourceSeqs[$source_id]);
+			LocalAlign($trans_str,$SourceSeqs[$source_id]);
 
 		    $sum_score += $lmm_score;
 
@@ -3115,10 +3114,11 @@ sub RecordGhostMSAs
 
 ###############################################################
 #
-#  Function:  MatchMismatchScore
+#  Function:  LocalAlign
 #
-sub MatchMismatchScore
+sub LocalAlign
 {
+
     my $str1 = shift;
     my $str2 = shift;
 
@@ -3129,24 +3129,167 @@ sub MatchMismatchScore
     my $len2 = scalar(@Seq2);
 
     my @Matrix;
-    for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0-$i; }
-    for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0-$j; }
+    for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0; }
+    for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0; }
 
-    for (my $i=1; $i<=$len1; $i++) {
-	for (my $j=1; $j<=$len2; $j++) {
-	    $Matrix[$i][$j]
-		= Max(Max($Matrix[$i-1][$j],$Matrix[$i][$j-1])-1,$Matrix[$i-1][$j-1]);
-	    if ($Seq1[$i-1] eq $Seq2[$j-1]) {
-		$Matrix[$i][$j]++;
-	    } else {
-		$Matrix[$i][$j]--;
+    # Gap penalty
+    my $gap = -2;
+    
+    # First off, we'll find the highest scoring coordinate under a
+    # local alignment scheme
+    my $max_i;
+    my $max_j;
+    my $max_score = 0;
+    my @ExtMatrix;
+    for (my $i=0; $i<$len1; $i++) {
+	for (my $j=0; $j<$len2; $j++) {
+
+	    my $match_score = GetB62Score($Seq1[$i],$Seq2[$j]) + $Matrix[$i][$j];
+	    
+	    $Matrix[$i+1][$j+1] = Max(Max($Matrix[$i+1][$j],$Matrix[$i][$j+1])+$gap,
+				      $match_score);
+
+	    $Matrix[$i+1][$j+1] = 0 if ($Matrix[$i][$j] < 0);
+
+	    if ($max_score < $Matrix[$i+1][$j+1]) {
+		$max_score = $Matrix[$i+1][$j+1];
+		$max_i = $i+1;
+		$max_j = $j+1;
 	    }
+	    
+	    $ExtMatrix[$i][$j] = 0;
+
 	}
     }
 
-    return $Matrix[$len1][$len2];
+    # If the max score indicates that we weren't able to get a reasonably exon-y
+    # alignment going, jump off
+    if ($max_score < 20) {
+	return(-1,0,0,0,0);
+    }
+
+    # We'll need to figure out where our local alignment actually terminates
+    my $end_i = $max_i;
+    my $end_j = $max_j;
+
+    if ($max_i < $len1 && $max_j < $len2) {
     
+	$ExtMatrix[$max_i][$max_j] = $max_score;
+	
+	my @IQueue;
+	my @JQueue;
+	
+	$IQueue[0] = $max_i;
+	$JQueue[0] = $max_j + 1;
+
+	$IQueue[1] = $max_i + 1;
+	$JQueue[1] = $max_j;
+	
+	$IQueue[2] = $max_i + 1;
+	$JQueue[2] = $max_j + 1;
+	
+	my $queue_start = 0;
+	my $queue_end   = 3;
+	
+	while ($queue_start < $queue_end) {
+
+	    my $i = $IQueue[$queue_start];
+	    my $j = $JQueue[$queue_start];
+	    $queue_start++;
+
+	    next if ($ExtMatrix[$i][$j]);
+
+	    if ($ExtMatrix[$i-1][$j-1] > 0) {
+		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i-1][$j-1] + GetB62Score($Seq1[$i-1],$Seq2[$j-1]),
+					 $ExtMatrix[$i][$j]);
+	    }
+
+	    if ($ExtMatrix[$i-1][$j] > 0) {
+		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i-1][$j] + $gap,
+					 $ExtMatrix[$i][$j]);
+	    }
+
+	    if ($ExtMatrix[$i][$j-1] > 0) {
+		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i][$j-1] + $gap,
+					 $ExtMatrix[$i][$j]);
+	    }
+
+	    if ($ExtMatrix[$i][$j] <= 0) {
+		$ExtMatrix[$i][$j] = -1;
+		next;
+	    }
+
+	    if ($i+1 < $len1 && $j+1 < $len2) {
+		
+		push(@IQueue,$i+1);
+		push(@JQueue,$j);
+		$queue_end++;
+
+		push(@IQueue,$i);
+		push(@JQueue,$j+1);
+		$queue_end++;
+
+		push(@IQueue,$i+1);
+		push(@JQueue,$j+1);
+		$queue_end++;
+		    
+	    }
+
+	}
+
+	$queue_end--;
+	while ($ExtMatrix[$IQueue[$queue_end]][$JQueue[$queue_end]] <= 0) {
+	    $queue_end--;
+	}
+
+	$end_i = $IQueue[$queue_end];
+	$end_j = $JQueue[$queue_end];
+
+    }
+
+    # Traceback!
+    my $start_i = $max_i;
+    my $start_j = $max_j;
+
+    my $penult_i = $max_i;
+    my $penult_j = $max_j;
+    while ($Matrix[$start_i][$start_j] > 0) {
+
+	$penult_i = $start_i;
+	$penult_j = $start_j;
+	
+	my $cell_score = $Matrix[$start_i][$start_j];
+	
+	my $match_score = GetB62Score($Seq1[$start_i-1],$Seq2[$start_j]-1);
+
+	if ($cell_score = $Matrix[$start_i-1][$start_j-1] + $match_score) {
+	    
+	    $start_i--;
+	    $start_j--;
+
+	} elsif ($cell_score = $Matrix[$start_i-1][$start_j] + $gap) {
+
+	    $start_i--;
+	    
+	} else {
+
+	    $start_j--;
+	    
+	}
+	
+    }
+
+    $start_i = $penult_i;
+    $start_j = $penult_j;
+
+    # FINALLY!  Note that we're returning the original max local score,
+    # which may not be representative of where we've trimmed the alignment.
+    # NOTE that we need to reduce by 1 because our matrix corresponds to
+    #   1-indexed sequences.    
+    return($max_score,$start_i-1,$end_i-1,$start_j-1,$end_j-1);
+
 }
+
 
 
 
