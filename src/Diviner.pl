@@ -2758,7 +2758,7 @@ sub RecordGhostMSAs
 
 		my $trim_it = 1;
 		for (my $i=1; $i<=$num_matched; $i++) {
-		    if (uc($Col[$i]) eq $target_char) {
+		    if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
 			$trim_it = 0;
 			last;
 		    }
@@ -2789,7 +2789,7 @@ sub RecordGhostMSAs
 
 		my $trim_it = 1;
 		for (my $i=1; $i<=$num_matched; $i++) {
-		    if (uc($Col[$i]) eq $target_char) {
+		    if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
 			$trim_it = 0;
 			last;
 		    }
@@ -2816,7 +2816,7 @@ sub RecordGhostMSAs
 		my @Col = split(//,$AminoMSA[$start_col]);
 		my $offset = 0;
 
-		while ($Col[$col_id] ne $Col[0]) {
+		while ($Col[$col_id] eq '-') {
 
 		    $Col[$col_id] = ' ';
 		    $AminoMSA[$start_col+$offset] = join('',@Col);
@@ -2833,7 +2833,7 @@ sub RecordGhostMSAs
 		@Col = split(//,$AminoMSA[$end_col]);
 		$offset = 0;
 
-		while ($Col[$col_id] ne $Col[0]) {
+		while ($Col[$col_id] eq '-') {
 
 		    $Col[$col_id] = ' ';
 		    $AminoMSA[$end_col-$offset] = join('',@Col);
@@ -3146,13 +3146,13 @@ sub LocalAlign
 	for (my $j=0; $j<$len2; $j++) {
 
 	    my $match_score = GetB62Score($Seq1[$i],$Seq2[$j]) + $Matrix[$i][$j];
-	    
+
 	    $Matrix[$i+1][$j+1] = Max(Max($Matrix[$i+1][$j],$Matrix[$i][$j+1])+$b62_gap,
 				      $match_score);
 
 	    $Matrix[$i+1][$j+1] = 0 if ($Matrix[$i+1][$j+1] < 0);
 
-	    if ($max_score < $Matrix[$i+1][$j+1]) {
+	    if ($max_score <= $Matrix[$i+1][$j+1]) {
 		$max_score = $Matrix[$i+1][$j+1];
 		$max_i = $i+1;
 		$max_j = $j+1;
@@ -3181,16 +3181,15 @@ sub LocalAlign
 	$penult_j = $start_j;
 	
 	my $cell_score = $Matrix[$start_i][$start_j];
-	print "\n$cell_score";
 	
 	my $match_score = GetB62Score($Seq1[$start_i-1],$Seq2[$start_j-1]);
 
-	if ($cell_score = $Matrix[$start_i-1][$start_j-1] + $match_score) {
+	if ($cell_score == $Matrix[$start_i-1][$start_j-1] + $match_score) {
 	    
 	    $start_i--;
 	    $start_j--;
 
-	} elsif ($cell_score = $Matrix[$start_i-1][$start_j] + $b62_gap) {
+	} elsif ($cell_score == $Matrix[$start_i-1][$start_j] + $b62_gap) {
 
 	    $start_i--;
 	    
@@ -3204,17 +3203,6 @@ sub LocalAlign
 
     $start_i = $penult_i;
     $start_j = $penult_j;
-
-    # DEBUGGING
-    print "\n  $max_score:\n    ";
-    for (my $x=$start_i-1; $x<=$max_i-1; $x++) {
-	print "$Seq1[$x]";
-    }
-    print "\n    ";
-    for (my $x=$start_j-1; $x<=$max_j-1; $x++) {
-	print "$Seq2[$x]";
-    }
-    print "\n\n";
 
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
