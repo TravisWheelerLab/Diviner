@@ -32,33 +32,37 @@ sub CollapseAndCountOverlaps;
 sub RecordHitsByPctID;
 
 
-# Added 'X' as ambiguity character (index 20)
+# Blosum-62 stuff
 my @Blosum62
-    = ( 4, -1, -2, -2,  0, -1, -1,  0, -2, -1, -1, -1, -1, -2, -1,  1,  0, -3, -2,  0,  0,
-       -1,  5,  0, -2, -3,  1,  0, -2,  0, -3, -2,  2, -1, -3, -2, -1, -1, -3, -2, -3,  0,
-       -2,  0,  6,  1, -3,  0,  0,  0,  1, -3, -3,  0, -2, -3, -2,  1,  0, -4, -2, -3,  0,
-       -2, -2,  1,  6, -3,  0,  2, -1, -1, -3, -4, -1, -3, -3, -1,  0, -1, -4, -3, -3,  0,
-	0, -3, -3, -3,  9, -3, -4, -3, -3, -1, -1, -3, -1, -2, -3, -1, -1, -2, -2, -1,  0,
-       -1,  1,  0,  0, -3,  5,  2, -2,  0, -3, -2,  1,  0, -3, -1,  0, -1, -2, -1, -2,  0,
-       -1,  0,  0,  2, -4,  2,  5, -2,  0, -3, -3,  1, -2, -3, -1,  0, -1, -3, -2, -2,  0,
-	0, -2,  0, -1, -3, -2, -2,  6, -2, -4, -4, -2, -3, -3, -2,  0, -2, -2, -3, -3,  0,
-       -2,  0,  1, -1, -3,  0,  0, -2,  8, -3, -3, -1, -2, -1, -2, -1, -2, -2,  2, -3,  0,
-       -1, -3, -3, -3, -1, -3, -3, -4, -3,  4,  2, -3,  1,  0, -3, -2, -1, -3, -1,  3,  0,
-       -1, -2, -3, -4, -1, -2, -3, -4, -3,  2,  4, -2,  2,  0, -3, -2, -1, -2, -1,  1,  0,
-       -1,  2,  0, -1, -3,  1,  1, -2, -1, -3, -2,  5, -1, -3, -1,  0, -1, -3, -2, -2,  0,
-       -1, -1, -2, -3, -1,  0, -2, -3, -2,  1,  2, -1,  5,  0, -2, -1, -1, -1, -1,  1,  0,
-       -2, -3, -3, -3, -2, -3, -3, -3, -1,  0,  0, -3,  0,  6, -4, -2, -2,  1,  3, -1,  0,
-       -1, -2, -2, -1, -3, -1, -1, -2, -2, -3, -3, -1, -2, -4,  7, -1, -1, -4, -3, -2,  0,
-	1, -1,  1,  0, -1,  0,  0,  0, -1, -2, -2,  0, -1, -2, -1,  4,  1, -3, -2, -2,  0,
-	0, -1,  0, -1, -1, -1, -1, -2, -2, -1, -1, -1, -1, -2, -1,  1,  5, -2, -2,  0,  0,
-       -3, -3, -4, -4, -2, -2, -3, -2, -2, -3, -2, -3, -1,  1, -4, -3, -2, 11,  2, -3,  0,
-       -2, -2, -2, -3, -2, -1, -2, -3,  2, -1, -1, -2, -1,  3, -3, -2, -2,  2,  7, -1,  0,
-	0, -3, -3, -3, -1, -2, -2, -3, -3,  3,  1, -2,  1, -1, -2, -2,  0, -3, -1,  4,  0,
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0);
+    = ( 4,  0, -2, -1, -2,  0, -2, -1, -1, -1, -1, -1, -1, -1, -1,  1, -1, -2, -3, -2,  0,
+	0,  9, -3, -4, -2, -3, -3, -1, -3, -1, -1, -3, -3, -3, -3, -1, -1, -1, -2, -2,  0,
+       -2, -3,  6,  2, -3, -1, -1, -3, -1, -4, -3,  1, -1,  0, -2,  0,  1, -3, -4, -3,  0,
+       -1, -4,  2,  5, -3, -2,  0, -3,  1, -3, -2,  0, -1,  2,  0,  0,  0, -3, -3, -2,  0,
+       -2, -2, -3, -3,  6, -3, -1,  0, -3,  0,  0, -3, -4, -3, -3, -2, -2, -1,  1,  3,  0,
+        0, -3, -1, -2, -3,  6, -2, -4, -2, -4, -3, -2, -2, -2, -2,  0,  1,  0, -2, -3,  0,
+       -2, -3,  1,  0, -1, -2,  8, -3, -1, -3, -2,  1, -2,  0,  0, -1,  0, -2, -2,  2,  0,
+       -1, -1, -3, -3,  0, -4, -3,  4, -3,  2,  1, -3, -3, -3, -3, -2, -2,  1, -3, -1,  0,
+       -1, -3, -1,  1, -3, -2, -1, -3,  5, -2, -1,  0, -1,  1,  2,  0,  0, -3, -3, -2,  0,
+       -1, -1, -4, -3,  0, -4, -3,  2, -2,  4,  2, -3, -3, -2, -2, -2, -2,  3, -2, -1,  0,
+       -1, -1, -3, -2,  0, -3, -2,  1, -1,  2,  5, -2, -2,  0, -1, -1, -1, -2, -1, -1,  0,
+       -2, -3,  1,  0, -3,  0, -1, -3,  0, -3, -2,  6, -2,  0,  0,  1,  0, -3, -4, -2,  0,
+       -1, -3, -1, -1, -4, -2, -2, -3, -1, -3, -2, -1,  7, -1, -2, -1,  1, -2, -4, -3,  0,
+       -1, -3,  0,  2, -3, -2,  0, -3,  1, -2,  0,  0, -1,  5,  1,  0,  0, -2, -2, -1,  0,
+       -1, -3, -2,  0, -3, -2,  0, -3,  2, -2, -1,  0, -2,  1,  5, -1, -1, -3, -3, -2,  0,
+	1, -1,  0,  0, -2,  0, -1, -2,  0, -2, -1,  1, -1,  0, -1,  4,  1, -2, -3, -2,  0,
+       -1, -1,  1,  0, -2,  1,  0, -2,  0, -2, -1,  0,  1,  0, -1,  1,  4, -2, -3, -2,  0,
+	0, -1, -3, -2, -1, -3, -3,  3, -2,  1,  1, -3, -2, -2, -3, -2, -2,  4, -3, -1,  0,
+       -3, -2, -4, -3,  1, -2, -2, -3, -3, -2, -1, -4, -4, -2, -3, -3, -3, -3, 11,  2,  0,
+       -2, -2, -3, -2,  3, -3,  2, -1, -2, -1, -1, -2, -3, -1, -2, -2, -2, -1,  2,  7,  0,
+	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0);
+
 my %AminoIndex
     = ('A', 0,'C', 1,'D', 2,'E', 3,'F', 4,'G', 5,'H', 6,'I', 7,'K', 8,'L', 9,
        'M',10,'N',11,'P',12,'Q',13,'R',14,'S',15,'T',16,'V',17,'W',18,'Y',19,'X',20);
     
+my $b62_gap = -4;
+
+
 
 ##############
 #            #
@@ -3132,9 +3136,6 @@ sub LocalAlign
     for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0; }
     for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0; }
 
-    # Gap penalty
-    my $gap = -2;
-    
     # First off, we'll find the highest scoring coordinate under a
     # local alignment scheme
     my $max_i;
@@ -3146,10 +3147,10 @@ sub LocalAlign
 
 	    my $match_score = GetB62Score($Seq1[$i],$Seq2[$j]) + $Matrix[$i][$j];
 	    
-	    $Matrix[$i+1][$j+1] = Max(Max($Matrix[$i+1][$j],$Matrix[$i][$j+1])+$gap,
+	    $Matrix[$i+1][$j+1] = Max(Max($Matrix[$i+1][$j],$Matrix[$i][$j+1])+$b62_gap,
 				      $match_score);
 
-	    $Matrix[$i+1][$j+1] = 0 if ($Matrix[$i][$j] < 0);
+	    $Matrix[$i+1][$j+1] = 0 if ($Matrix[$i+1][$j+1] < 0);
 
 	    if ($max_score < $Matrix[$i+1][$j+1]) {
 		$max_score = $Matrix[$i+1][$j+1];
@@ -3168,86 +3169,7 @@ sub LocalAlign
 	return(-1,0,0,0,0);
     }
 
-    # We'll need to figure out where our local alignment actually terminates
-    my $end_i = $max_i;
-    my $end_j = $max_j;
-
-    if ($max_i < $len1 && $max_j < $len2) {
-    
-	$ExtMatrix[$max_i][$max_j] = $max_score;
-	
-	my @IQueue;
-	my @JQueue;
-	
-	$IQueue[0] = $max_i;
-	$JQueue[0] = $max_j + 1;
-
-	$IQueue[1] = $max_i + 1;
-	$JQueue[1] = $max_j;
-	
-	$IQueue[2] = $max_i + 1;
-	$JQueue[2] = $max_j + 1;
-	
-	my $queue_start = 0;
-	my $queue_end   = 3;
-	
-	while ($queue_start < $queue_end) {
-
-	    my $i = $IQueue[$queue_start];
-	    my $j = $JQueue[$queue_start];
-	    $queue_start++;
-
-	    next if ($ExtMatrix[$i][$j]);
-
-	    if ($ExtMatrix[$i-1][$j-1] > 0) {
-		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i-1][$j-1] + GetB62Score($Seq1[$i-1],$Seq2[$j-1]),
-					 $ExtMatrix[$i][$j]);
-	    }
-
-	    if ($ExtMatrix[$i-1][$j] > 0) {
-		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i-1][$j] + $gap,
-					 $ExtMatrix[$i][$j]);
-	    }
-
-	    if ($ExtMatrix[$i][$j-1] > 0) {
-		$ExtMatrix[$i][$j] = Max($ExtMatrix[$i][$j-1] + $gap,
-					 $ExtMatrix[$i][$j]);
-	    }
-
-	    if ($ExtMatrix[$i][$j] <= 0) {
-		$ExtMatrix[$i][$j] = -1;
-		next;
-	    }
-
-	    if ($i+1 < $len1 && $j+1 < $len2) {
-		
-		push(@IQueue,$i+1);
-		push(@JQueue,$j);
-		$queue_end++;
-
-		push(@IQueue,$i);
-		push(@JQueue,$j+1);
-		$queue_end++;
-
-		push(@IQueue,$i+1);
-		push(@JQueue,$j+1);
-		$queue_end++;
-		    
-	    }
-
-	}
-
-	$queue_end--;
-	while ($ExtMatrix[$IQueue[$queue_end]][$JQueue[$queue_end]] <= 0) {
-	    $queue_end--;
-	}
-
-	$end_i = $IQueue[$queue_end];
-	$end_j = $JQueue[$queue_end];
-
-    }
-
-    # Traceback!
+    # TRACEBACK!
     my $start_i = $max_i;
     my $start_j = $max_j;
 
@@ -3259,15 +3181,16 @@ sub LocalAlign
 	$penult_j = $start_j;
 	
 	my $cell_score = $Matrix[$start_i][$start_j];
+	print "\n$cell_score";
 	
-	my $match_score = GetB62Score($Seq1[$start_i-1],$Seq2[$start_j]-1);
+	my $match_score = GetB62Score($Seq1[$start_i-1],$Seq2[$start_j-1]);
 
 	if ($cell_score = $Matrix[$start_i-1][$start_j-1] + $match_score) {
 	    
 	    $start_i--;
 	    $start_j--;
 
-	} elsif ($cell_score = $Matrix[$start_i-1][$start_j] + $gap) {
+	} elsif ($cell_score = $Matrix[$start_i-1][$start_j] + $b62_gap) {
 
 	    $start_i--;
 	    
@@ -3282,255 +3205,22 @@ sub LocalAlign
     $start_i = $penult_i;
     $start_j = $penult_j;
 
+    # DEBUGGING
+    print "\n  $max_score:\n    ";
+    for (my $x=$start_i-1; $x<=$max_i-1; $x++) {
+	print "$Seq1[$x]";
+    }
+    print "\n    ";
+    for (my $x=$start_j-1; $x<=$max_j-1; $x++) {
+	print "$Seq2[$x]";
+    }
+    print "\n\n";
+
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
     # NOTE that we need to reduce by 1 because our matrix corresponds to
     #   1-indexed sequences.    
-    return($max_score,$start_i-1,$end_i-1,$start_j-1,$end_j-1);
-
-}
-
-
-
-
-
-
-###############################################################
-#
-#  Function:  LocalMatchMismatchAli
-#
-sub LocalMatchMismatchAli
-{
-    my $str1 = shift;
-    my $str2 = shift;
-
-    my @Seq1 = split(//,uc($str1));
-    my $len1 = scalar(@Seq1);
-
-    my @Seq2 = split(//,uc($str2));
-    my $len2 = scalar(@Seq2);
-
-    my @Matrix;
-    for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0; }
-    for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0; }
-
-    my $match = 1;
-    my $mismatch = -1;
-    my $gap = -1;
-    
-    # First off, we'll find the highest scoring coordinate under a
-    # local alignment scheme
-    my $max_i;
-    my $max_j;
-    my $max_score = 0;
-    for (my $i=1; $i<=$len1; $i++) {
-	for (my $j=1; $j<=$len2; $j++) {
-
-	    my $cell_score = $mismatch;
-	    $cell_score = $match if ($Seq1[$i-1] eq $Seq2[$j-1]);
-	    $cell_score += $Matrix[$i-1][$j-1];
-	    
-	    $Matrix[$i][$j] = Max(Max($Matrix[$i-1][$j],$Matrix[$i][$j-1])+$gap,
-				  $cell_score);
-	    $Matrix[$i][$j] = 0 if ($Matrix[$i][$j] < 0);
-
-	    if ($max_score < $Matrix[$i][$j]) {
-		$max_score = $Matrix[$i][$j];
-		$max_i = $i;
-		$max_j = $j;
-	    }
-	    
-	}
-    }
-
-    # If the max score indicates that we weren't able to get a reasonably exon-y
-    # alignment going, jump off
-    if ($max_score < $match * 5) {
-	return(-1,0,0,0,0);
-    }
-
-    # Next, we'll re-compute the top-left and bottom-right quadrants
-    # of the matrix so that we have a global path that leads to our
-    # highest-scoring region
-
-    # Top-left
-    for (my $i=1; $i<=$max_i; $i++) {
-	for (my $j=1; $j<=$max_j; $j++) {
-
-	    my $cell_score = $mismatch;
-	    $cell_score = $match if ($Seq1[$i-1] eq $Seq2[$j-1]);
-	    $cell_score += $Matrix[$i-1][$j-1];
-	
-	    $Matrix[$i][$j] = Max(Max($Matrix[$i-1][$j],$Matrix[$i][$j-1])+$gap,
-				  $cell_score);
-	    
-	}
-    }
-    my $score_save = $Matrix[$max_i][$max_j]; # This cell gets overwritten
-
-    # Bottom-right
-    for (my $i=$max_i; $i<=$len1; $i++) { $Matrix[$i][$max_j] = ($i-$max_i) * $gap; }
-    for (my $j=$max_j; $j<=$len2; $j++) { $Matrix[$max_i][$j] = ($j-$max_j) * $gap; }
-
-    for (my $i=$max_i+1; $i<=$len1; $i++) {
-	for (my $j=$max_j+1; $j<=$len2; $j++) {
-	    
-	    my $cell_score = $mismatch;
-	    $cell_score = $match if ($Seq1[$i-1] eq $Seq2[$j-1]);
-	    $cell_score += $Matrix[$i-1][$j-1];
-
-	    $Matrix[$i][$j] = Max(Max($Matrix[$i-1][$j],$Matrix[$i][$j-1])+$gap,
-				  $cell_score);
-	    
-	}
-    }
-
-    # Traceback!
-    my @ITrace;
-    my @JTrace;
-    push(@ITrace,$len1);
-    push(@JTrace,$len2);
-
-    my $i=$len1;
-    my $j=$len2;
-    while ($i>$max_i && $j>$max_j) {
-
-	my $cell_score = $mismatch;
-	$cell_score = $match if ($Seq1[$i-1] eq $Seq2[$j-1]);
-	$cell_score += $Matrix[$i-1][$j-1];
-	
-	if ($Matrix[$i][$j] == $cell_score ) {
-	    $i--;
-	    $j--;
-	} elsif ($Matrix[$i][$j] == $Matrix[$i-1][$j]+$gap) {
-	    $i--;
-	} else {
-	    $j--;
-	}
-
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-
-    }
-
-    while ($i>$max_i) {
-	$i--;
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-    }
-
-    while ($j>$max_j) {
-	$j--;
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-    }
-
-    # Halfway(-ish) there!  Time to trace our way back through the top-left quad
-    $Matrix[$i][$j] = $score_save;
-    my $key_pos = scalar(@ITrace)-1;
-
-    while ($i && $j) {
-
-	my $cell_score = $mismatch;
-	$cell_score = $match if ($Seq1[$i-1] eq $Seq2[$j-1]);
-	$cell_score += $Matrix[$i-1][$j-1];
-	
-	if ($Matrix[$i][$j] == $cell_score ) {
-	    $i--;
-	    $j--;
-	} elsif ($Matrix[$i][$j] == $Matrix[$i-1][$j]+$gap) {
-	    $i--;
-	} else {
-	    $j--;
-	}
-
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-
-    }
-
-    while ($i) {
-	$i--;
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-    }
-
-    while ($j) {
-	$j--;
-	push(@ITrace,$i);
-	push(@JTrace,$j);
-    }
-
-    
-    # Awesome!  Before we make any more SWEET progress, note that our traceback
-    # is backwards, so we need to flip it around
-    my $trace_len = scalar(@ITrace);
-    for (my $pos=0; $pos<$trace_len/2; $pos++) {
-
-	my $flip_pos = ($trace_len-1) - $pos;
-
-	my $tmp = $ITrace[$pos];
-	$ITrace[$pos] = $ITrace[$flip_pos];
-	$ITrace[$flip_pos] = $tmp;
-
-	$tmp = $JTrace[$pos];
-	$JTrace[$pos] = $JTrace[$flip_pos];
-	$JTrace[$flip_pos] = $tmp;
-
-    }
-    $trace_len--;
-
-    $key_pos = $trace_len - $key_pos;
-    
-    # Our approach to trimming in the alignment is that we'll allow our
-    # quality to "charge" up to a maximum value (it starts fully "charged"),
-    # where mismatches/gaps expend charge and matches gain charge.
-    # If the quality drops to 0, we end the alignment at the last match pos.
-    my $quality_cut = 4;
-
-    # Starting from key_pos, walk left until the "quality" slips to 0
-    my $left_end_pos = $key_pos-1;
-    my $left_last_match = $key_pos;
-    my $left_quality = $quality_cut;
-    while ($left_end_pos > 0 && $ITrace[$left_end_pos] && $JTrace[$left_end_pos]) {
-
-	if ($Seq1[$ITrace[$left_end_pos]] eq $Seq2[$JTrace[$left_end_pos]]) {
-	    $left_quality = Min($quality_cut,$left_quality+1);
-	    $left_last_match = $left_end_pos;
-	} else {
-	    $left_quality--;
-	    last if ($left_quality == 0);
-	}
-
-	$left_end_pos--;
-	
-    }
-    
-
-    # Now do the same thing, but to the right
-    my $right_end_pos = $key_pos+1;
-    my $right_last_match = $key_pos;
-    my $right_quality = $quality_cut;
-    while ($right_end_pos < $trace_len-1 && $ITrace[$right_end_pos] < $len1 && $JTrace[$right_end_pos] < $len2) {
-
-	if ($Seq1[$ITrace[$right_end_pos]] eq $Seq2[$JTrace[$right_end_pos]]) {
-	    $right_quality = Min($quality_cut,$right_quality+1);
-	    $right_last_match = $right_end_pos;
-	} else {
-	    $right_quality--;
-	    last if ($right_quality == 0);
-	}
-	
-	$right_end_pos++;
-
-    }
-
-    # FINALLY!  Note that we're returning the original max local score,
-    # which may not be representative of where we've trimmed the alignment.
-    # NOTE that we need to reduce by 1 because our matrix corresponds to
-    #   1-indexed sequences.
-    return ($max_score,$ITrace[$left_last_match]-1,$ITrace[$right_last_match]-1,
-	    $JTrace[$left_last_match]-1,$JTrace[$right_last_match]-1);
+    return($max_score,$start_i-1,$max_i-1,$start_j-1,$max_j-1);
 
 }
 
@@ -3601,41 +3291,17 @@ sub MultiAminoSeqAli
     my $len1 = scalar(@Seqs1);
     my $len2 = scalar(@Seqs2);
 
-    # Let's be good and proper and use affine gapping
-    my $gap_open = -1.5;
-    my $gap_end  = -1.5;
-    my $gap_ext  = -1.0;
-    my @Match;
-    my @HorizGap;
-    my @VertGap;
-    $Match[0][0]    = 0.0;
-    $HorizGap[0][0] = $gap_open;
-    $VertGap[0][0]  = $gap_open;
-    for (my $i=1; $i<=$len1; $i++) {
-	$HorizGap[$i][0] = $gap_open;
-	$Match[$i][0]    = -100.0;
-	$VertGap[$i][0]  = -100.0;
-    }
-    for (my $j=1; $j<=$len2; $j++) {
-	$VertGap[0][$j]  = $gap_open;
-	$Match[0][$j]    = -100.0;
-	$HorizGap[0][$j] = -100.0;
-    }
+    my @Matrix;
+    for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = $i * $b62_gap; }
+    for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = $j * $b62_gap; }
 
-    for (my $i=1; $i<=$len1; $i++) {
-	for (my $j=1; $j<=$len2; $j++) {
+    for (my $i=0; $i<$len1; $i++) {
+	for (my $j=0; $j<$len2; $j++) {
 
-	    my $b62 = GetB62Score($Seqs1[$i-1],$Seqs2[$j-1]);
+	    my $match = GetB62Score($Seqs1[$i],$Seqs2[$j]);
 
-	    $Match[$i][$j] = Max(Max($HorizGap[$i-1][$j-1]+$gap_end+$b62,
-				     $VertGap[$i-1][$j-1]+$gap_end+$b62),
-				 $Match[$i-1][$j-1]+$b62);
-	    
-	    $HorizGap[$i][$j] = Max($HorizGap[$i-1][$j]+$gap_ext,
-				    $Match[$i-1][$j]+$gap_open);
-
-	    $VertGap[$i][$j] = Max($VertGap[$i][$j-1]+$gap_ext,
-				   $Match[$i][$j-1]+$gap_open);
+	    $Matrix[$i+1][$j+1] = Max($Matrix[$i][$j] + $match,
+				      Max($Matrix[$i][$j+1],$Matrix[$i+1][$j]) + $b62_gap);
 	    
 	}
     }
@@ -3646,61 +3312,28 @@ sub MultiAminoSeqAli
     my $gapstr2 = '-';
     while (length($gapstr2) < length($Seqs2[0])) { $gapstr2 = $gapstr2.'-'; }
 
-    # During the traceback we'll need to know which state we're in
-    my $s;
-    if ($Match[$len1][$len2] > $HorizGap[$len1][$len2]) {
-	if ($Match[$len1][$len2] > $VertGap[$len1][$len2]) {
-	    $s='m';
-	} else {
-	    $s='v';
-	}
-    } elsif ($HorizGap[$len1][$len2] > $VertGap[$len1][$len2]) {
-	$s='h';
-    } else {
-	$s='v';
-    }
-
     # Time to back-trace!
     my @Ali;
     my $i=$len1;
     my $j=$len2;
     while ($i && $j) {
 
-	if ($s eq 'm') {
-	    
+	my $match = GetB62Score($Seqs1[$i-1],$Seqs2[$j-1]);
+
+	if ($Matrix[$i][$j] == $Matrix[$i-1][$j-1] + $match) {
+
 	    push(@Ali,$Seqs1[$i-1].$Seqs2[$j-1]);
-
-	    my $b62 = GetB62Score($Seqs1[$i-1],$Seqs2[$j-1]);
-
-	    if ($Match[$i][$j] == $Match[$i-1][$j-1]+$b62) {
-		$s='m';
-	    } elsif ($Match[$i][$j] == $HorizGap[$i-1][$j-1]+$gap_end+$b62) {
-		$s='h';
-	    } else {
-		$s='v';
-	    }
-
 	    $i--;
 	    $j--;
 
-	} elsif ($s eq 'h') {
+	} elsif ($Matrix[$i][$j] == $Matrix[$i-1][$j] + $b62_gap) {
 
 	    push(@Ali,$Seqs1[$i-1].$gapstr2);
-
-	    if ($HorizGap[$i][$j] == $Match[$i-1][$j]+$gap_open) {
-		$s='m';
-	    } # else $s='h'
-	    
 	    $i--;
 
-	} else { # $s=='v'
+	} else {
 
 	    push(@Ali,$gapstr1.$Seqs2[$j-1]);
-
-	    if ($VertGap[$i][$j] == $Match[$i][$j-1]+$gap_open) {
-		$s='m';
-	    } # else $s='v'
-
 	    $j--;
 
 	}
@@ -3708,13 +3341,17 @@ sub MultiAminoSeqAli
     }
 
     while ($i) {
+
 	push(@Ali,$Seqs1[$i-1].$gapstr2);
 	$i--;
+
     }
 
     while ($j) {
+
 	push(@Ali,$gapstr1.$Seqs2[$j-1]);
 	$j--;
+
     }
 
     # Uh-oh!  That alignment is BACKWARDS!!!
