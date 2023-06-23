@@ -60,7 +60,7 @@ my %AminoIndex
     = ('A', 0,'C', 1,'D', 2,'E', 3,'F', 4,'G', 5,'H', 6,'I', 7,'K', 8,'L', 9,
        'M',10,'N',11,'P',12,'Q',13,'R',14,'S',15,'T',16,'V',17,'W',18,'Y',19,'X',20);
     
-my $b62_gap = -4;
+my $b62_gap = -5;
 
 
 
@@ -2816,7 +2816,7 @@ sub RecordGhostMSAs
 		my @Col = split(//,$AminoMSA[$start_col]);
 		my $offset = 0;
 
-		while ($Col[$col_id] eq '-') {
+		while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
 
 		    $Col[$col_id] = ' ';
 		    $AminoMSA[$start_col+$offset] = join('',@Col);
@@ -2833,7 +2833,7 @@ sub RecordGhostMSAs
 		@Col = split(//,$AminoMSA[$end_col]);
 		$offset = 0;
 
-		while ($Col[$col_id] eq '-') {
+		while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id] <= 0.0)) {
 
 		    $Col[$col_id] = ' ';
 		    $AminoMSA[$end_col-$offset] = join('',@Col);
