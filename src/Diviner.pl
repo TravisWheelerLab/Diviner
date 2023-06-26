@@ -24,6 +24,8 @@ sub ReduceMSAToSpecies;
 sub FindGhostExons;
 sub FindAliQualityDrops;
 sub RecordGhostMSAs;
+sub GatherBestLocalAlis;
+sub RangesOverlap;
 sub LocalAlign;
 sub GetB62Score;
 sub MultiAminoSeqAli;
@@ -2696,7 +2698,7 @@ sub RecordGhostMSAs
 		    $HitSourceStarts[$match_id] = $1;
 		    $HitSourceEnds[$match_id] = $2;
 		    $HitSourceIDs[$match_id] = $3;
-		    
+
 		}
 		
 		
@@ -2866,6 +2868,13 @@ sub RecordGhostMSAs
 		    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
 		    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
 
+		    # Finally, we need to make sure that these coordinates reflect
+		    # the position of the source range in the MSA -- not just this
+		    # search region
+		    $SourceAminoRanges[$HitSourceIDs[$match_id]] =~ /^(\d+)\.\./;
+		    my $global_amino_range_start = $1;
+		    $HitSourceStarts[$match_id] += $global_amino_range_start;
+		    $HitSourceEnds[$match_id]   += $global_amino_range_start;
 		    
 		}
 		
@@ -3212,9 +3221,9 @@ sub GatherBestLocalAlis
     my ($score_density,$target_ali_start,$target_ali_end,$source_ali_start,$source_ali_end)
 	= LocalAlign(\@TargetChars,\@SourceChars);
 
-    
+
     # Did we not find anything we're excited about?
-    return (0,0,0,0) if ($score_density < 3);
+    return (0,0,0,0) if ($score_density < 1.5);
 
     
     my $true_target_ali_start = $target_ali_start + $target_start;
@@ -3441,7 +3450,8 @@ sub LocalAlign
     $start_j = $penult_j;
 
     my $score_density = $max_score / $ali_len;
-    
+
+
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
     # NOTE that we need to reduce by 1 because our matrix corresponds to
