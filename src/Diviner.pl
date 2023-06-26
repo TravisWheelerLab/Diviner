@@ -14,6 +14,7 @@ use DisplayProgress;
 
 # Subroutines
 sub PrintUsage;
+sub DetailedUsage;
 sub ParseArgs;
 sub ParseGTF;
 sub GetMappedSeqMSA;
@@ -66,6 +67,7 @@ my $b62_gap = -7;
 
 
 
+
 ##############
 #            #
 #   SCRIPT   #
@@ -74,12 +76,27 @@ my $b62_gap = -7;
 
 
 
-if (@ARGV < 2) { PrintUsage(); }
+if (@ARGV < 2) {
+    if (@ARGV == 1 && lc($ARGV[0]) =~ /\-help/) {
+	DetailedUsage();
+    }
+    PrintUsage();
+}
 
 
 # Figure out what the location of the Mirage src directory is
 my $location = $0;
 $location =~ s/Diviner\.pl$//;
+
+
+# Parse any commandline arguments
+my $options_ref = ParseArgs();
+my %Options = %{$options_ref};
+my $num_cpus = $Options{cpus};
+my $save_msas = $Options{savemsas}; # Do we want to write our spliced MSAs to files?
+my $score_density_threshold = $Options{density};
+my $bad_ali_cutoff = $Options{alicutoff};
+
 
 # Find all the friends we're going to need inside Diviner
 my $dependencies_ref = FindDependencies();
@@ -91,21 +108,12 @@ my $sfetch  = $Dependencies{'sfetch'};
 my $sstat   = $Dependencies{'sstat'};
 my $tblastn = $Dependencies{'tblastn'};
 
+
 # An astute observer will notice that these aren't the same settings as Quilter
 # uses, which is because this isn't frickin' Quilter, geez.
 # It's rad that our standardized filenames let us play like this!
 $tblastn = $tblastn.' -outfmt 6 ';
 
-
-# TODO: Make these options available as commandline arguments
-my $options_ref = ParseArgs();
-my %Options = %{$options_ref};
-my $num_cpus = $Options{cpus};
-my $outdirname = CreateDirectory($Options{outdirname});
-my $outgenesdir = CreateDirectory($outdirname.'Results-by-Gene');
-my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
-my $save_msas = $Options{savemsas}; # Do we want to write our spliced MSAs to files?
-my $bad_ali_cutoff = $Options{alicutoff};
 
 # Confirm that the input directory looks like the real deal
 my $input_dirname = ConfirmDirectory($ARGV[0]);
@@ -182,6 +190,12 @@ close($SpeciesGuide);
 if (scalar(keys %SpeciesToGenomes) == 0) {
     die "\n  ERROR:  Failed to locate usable genome mappings in species guide file '$ARGV[1]'\n\n";
 }
+
+
+# Now that we know that we have solid inputs, we'll create the output directory
+my $outdirname  = CreateDirectory($Options{outdirname});
+my $outgenesdir = CreateDirectory($outdirname.'Results-by-Gene');
+my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
 
 
 # If we're writing out to a file, make a directory to store our spliced msas.
@@ -429,6 +443,34 @@ sub PrintUsage
     print "\n";
     print "  OPT.s :  -cpus=[int]\n";
     print "           -outdirname=[string]\n";
+    print "           -density=[double]\n";
+    die "\n";
+}
+
+
+
+
+
+###############################################################
+#
+#  Function: DetailedUsage
+#
+sub DetailedUsage
+{
+    print "\n";
+    print "  USAGE :  ./Diviner.pl {OPT.s} [Mirage-Results] [Species-Guide]\n";
+    print "\n";
+    print "  OPT.s :  -cpus=[int]          : Set the number of CPU cores to use.\n";
+    print "                                  (default:2)\n";
+    print "\n";
+    print "           -outdirname=[string] : Save program outputs to a directory with the specified name.\n";
+    print "                                  (default:Diviner-Results)\n";
+    print "\n";
+    print "           -density=[double]    : Set the BLOSUM-62 score density threshold for acceptable\n";
+    print "                                  alignments between known exons and possible coding regions.\n";
+    print "\n";
+    print "                                  Recommended range: 1 (distant homologs) to 3 (strong similarity)\n";
+    print "                                  (default:1.5)\n";
     die "\n";
 }
 
@@ -448,6 +490,7 @@ sub ParseArgs
         outdirname => 'Diviner-Results',
         savemsas => 0,
 	alicutoff => 0.4,
+	density => 1.5
         );
 
     &GetOptions( 
@@ -456,12 +499,13 @@ sub ParseArgs
 	"cpus=i",
         "outdirname=s",
 	"savemsas",
-	"alicutoff=s"
+	"alicutoff=s",
+	"density=s"
         )
         || die "\n  ERROR:  Failed to parse command line arguments\n\n";
 
     if ($Options{help}) {
-	die "\n  Help is on the way!\n\n"; # TODO
+	DetailedUsage();
     }
 
     return \%Options;
@@ -2381,6 +2425,7 @@ sub RecordGhostMSAs
 
     # Make an output directory for our alignment visualizations
     my $gene_ali_dir = CreateDirectory($genedir.'alignments');
+    my $num_gene_ali_files = 0;
     
     # Now we can run through our species actually building up some dang MSAs!
     foreach my $target_species (keys %TargetSpeciesToHits) {
@@ -3130,7 +3175,13 @@ sub RecordGhostMSAs
 	
 	# Do a check to see if we actually reported any hits...
 	if (!(-s $outfname)) { RunSystemCommand("rm \"$outfname\""); }
+	else                 { $num_gene_ali_files++;                }
 	
+    }
+
+    # Did we end up not recording a single dang alignment?! RATS!
+    if ($num_gene_ali_files == 0) {
+	RunSystemCommand("rm -rf \"$gene_ali_dir\"");
     }
 
 }
@@ -3223,7 +3274,7 @@ sub GatherBestLocalAlis
 
 
     # Did we not find anything we're excited about?
-    return (0,0,0,0) if ($score_density < 1.5);
+    return (0,0,0,0) if ($score_density < $score_density_threshold);
 
     
     my $true_target_ali_start = $target_ali_start + $target_start;
