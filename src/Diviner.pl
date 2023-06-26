@@ -60,7 +60,7 @@ my %AminoIndex
     = ('A', 0,'C', 1,'D', 2,'E', 3,'F', 4,'G', 5,'H', 6,'I', 7,'K', 8,'L', 9,
        'M',10,'N',11,'P',12,'Q',13,'R',14,'S',15,'T',16,'V',17,'W',18,'Y',19,'X',20);
     
-my $b62_gap = -5;
+my $b62_gap = -7;
 
 
 
@@ -2545,22 +2545,23 @@ sub RecordGhostMSAs
 
 	    my @NuclSeq = split(//,$nucl_seq);
 
+	    # Instead of picking an individual reading frame to work with, we'll
+	    # track down any regions that have a score density >2 and take note of
+	    # which portions of which source sequences are associated with those
+	    # regions.
+
 	    # Check which reading frame looks like it's the one we're supposed to be
 	    # working with...
-	    my $best_frame_num;
-	    my $best_frame_score = 0;
-	    my $best_frame_trans;
-	    my @FrameSourceStarts;
-	    my @FrameSourceEnds;
-	    my @FrameTargetStarts;
-	    my @FrameTargetEnds;
-	    my @FrameTranslations;
-	    my @FrameScores;
+	    my @FrameTransStrs;
+	    my @AllHits;
+	    my @HitSetsByTargetRegion;
+	    my $num_hits = 0;
 	    for (my $frame=0; $frame<3; $frame++) {
 
 		# Pull in this reading frame
 		my $frame_str = '';
 		my $trans_str = '';
+		my @TransChars;
 		for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
 
 		    my $codon = $NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2];
@@ -2569,544 +2570,558 @@ sub RecordGhostMSAs
 		    my $trans_aa = TranslateCodon($codon);
 		    $trans_str = $trans_str.$trans_aa;
 
+		    push(@TransChars,$trans_aa);
+
 		}
 
-		push(@FrameTranslations,$trans_str);
+		push(@FrameTransStrs,$trans_str);
 
-		# We'll get the best local score along with start / end
-		# coordinates, relative to the search amino sequence.
-		my $sum_score = 0;
+		# For each of our source sequences, we'll get a sorted list of
+		# hits (by score density), which we'll then organize into groups
+		# that overlap on the target genome.
+		my @FrameHitsByTargetRegion;
 		for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
 
-		    my ($lmm_score,$lmm_t_start,$lmm_t_end,$lmm_s_start,$lmm_s_end) =
-			LocalAlign($trans_str,$SourceSeqs[$source_id]);
+		    my @SourceChars = split(//,$SourceSeqs[$source_id]);
 
-		    $sum_score += $lmm_score;
+		    my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
+			= GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
 
-		    $FrameSourceStarts[$frame][$source_id] = $lmm_s_start;
-		    $FrameSourceEnds[$frame][$source_id] = $lmm_s_end;
+		    next if (!$num_alis);
+		    
+		    my @ScoreDensities = @{$score_densities_ref};
+		    my @TargetRanges = @{$target_ranges_ref};
+		    my @SourceRanges = @{$source_ranges_ref};
 
-		    if ($source_id == 0 || $lmm_t_start < $FrameTargetStarts[$frame]) {
-			$FrameTargetStarts[$frame] = $lmm_t_start;
-		    }
+		    for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
 
-		    if ($source_id == 0 || $lmm_t_end > $FrameTargetEnds[$frame]) {
-			$FrameTargetEnds[$frame] = $lmm_t_end;
-		    }
+			my $score_density = $ScoreDensities[$hit_id];
+			my $target_range = $TargetRanges[$hit_id];
+			my $source_range = $SourceRanges[$hit_id];
 
-		    $FrameScores[$frame][$source_id] = $lmm_score;
+			push(@AllHits,$score_density.':'.$target_range.'/'.$source_range.'/'.$source_id);
 
-		}
+			my $new_range = 1;
+			for (my $range_id=0; $range_id<scalar(@FrameHitsByTargetRegion); $range_id++) {
 
-		if ($sum_score > $best_frame_score) {
-		    $best_frame_score = $sum_score;
-		    $best_frame_num = $frame;
-		    $best_frame_trans = $trans_str;
-		}
-		
-	    }
+			    $FrameHitsByTargetRegion[$range_id] =~ /^([^\:]+)\:(\S+)$/;
+			    
+			    my $group_range = $1;
+			    my $group_data  = $2;
 
-	    # I'm not sure why this is possible, but it seems that we have a
-	    # handful of edge cases where we're slurping bits of non-ghost amino
-	    # sequence into our searches, which leaves us searching for something
-	    # we've already found in a place adjacent to (but not including)
-	    # where we found it.
-	    #
-	    # That's a long-winded way of saying that sometimes our searches yield
-	    # 0 good outputs, so we need to be able to catch cases where our best
-	    # score is bad
-	    next if ($best_frame_score <= 0);
-
-	    # In case any of the sources didn't prefer the 'best' frame, we'll
-	    # want to (1.) kick them off the team, and (2.) report that there
-	    # might be something funky going on
-	    my @MatchedSourceIDs;
-	    my @UnmatchedSourceIDs;
-	    my @UnmatchedFramePrefs;
-	    for (my $source_id=0; $source_id<$num_source_species; $source_id++) {
-
-		if ($FrameScores[$best_frame_num][$source_id] > 0) {
-
-		    push(@MatchedSourceIDs,$source_id);
-
-		} else {
-
-		    # Which frame is better for this source amino sequence?
-		    my $preferred_frame = 0;
-		    if ($FrameScores[1] > $FrameScores[0]) {
-			if ($FrameScores[1] > $FrameScores[2]) {
-			    $preferred_frame = 1;
-			} else {
-			    $preferred_frame = 2;
+			    my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
+			    
+			    if ($overlap) {
+				$FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
+				$new_range = 0;
+				last;
+			    }
+			    
 			}
-		    } elsif ($FrameScores[2] > $FrameScores[0]) {
-			$preferred_frame = 2;
+
+			if ($new_range) {
+			    push(@FrameHitsByTargetRegion,$target_range.':'.$frame.':'.$num_hits);
+			}
+
+			$num_hits++;
+			
+		    }
+		    
+		}
+
+		
+		# Now we'll integrate the new set of hits according to
+		# the order of the target region
+		foreach my $frame_hit_set (@FrameHitsByTargetRegion) {
+
+		    $frame_hit_set =~ /^(\d+)\.\./;
+		    my $target_start = $1;
+
+		    my $inserted = 0;
+
+		    for (my $hit_set_id=0; $hit_set_id<scalar(@HitSetsByTargetRegion); $hit_set_id++) {
+
+			$HitSetsByTargetRegion[$hit_set_id] =~ /^(\d+)\.\./;
+			my $hit_target_start = $1;
+
+			if ($hit_target_start > $target_start) {
+
+			    splice(@HitSetsByTargetRegion,$hit_set_id,0,$frame_hit_set);
+			    $inserted = 1;
+			    last;
+			    
+			}
+			
 		    }
 
-		    push(@UnmatchedSourceIDs,$source_id);
-		    push(@UnmatchedFramePrefs,$preferred_frame);
-
+		    if (!$inserted) {
+			push(@HitSetsByTargetRegion,$frame_hit_set);
+		    }
+		    
 		}
-	    }
-
-	    my $num_matched = scalar(@MatchedSourceIDs);
-	    my $num_unmatched = scalar(@UnmatchedSourceIDs);
-
-	    # Oh, dear, it looks like we need to annouce a disagreement on the
-	    # proper frame...
-	    if ($num_unmatched) {
-		RecordFrameConflict($gene_ali_dir.'frame-disagreements.out',
-				    $target_species,$chr,$revcomp,$search_start,
-				    $search_end,$nucl_seq,$best_frame_num,
-				    \@FrameTranslations,\@MatchedSourceIDs,
-				    \@UnmatchedSourceIDs,\@UnmatchedFramePrefs,
-				    \@SourceSpecies,\@SourceSeqs);
-	    }
-
-	    # Now that we have our best frame (and associated data) figured out,
-	    # time to actually get alignin'!
-
-	    # Starting off by priming with the first source sequence
-	    my $source_id = $MatchedSourceIDs[0];
-	    my @SourceSeqChars = split(//,$SourceSeqs[$source_id]);
-
-	    my @AminoMSA;
-	    for (my $char_id=$FrameSourceStarts[$best_frame_num][$source_id];
-		 $char_id<=$FrameSourceEnds[$best_frame_num][$source_id];
-		 $char_id++) {
-		push(@AminoMSA,$SourceSeqChars[$char_id]);
-	    }
-
-	    # And now for the rest of the crew...
-	    for (my $meta_id=1; $meta_id<$num_matched; $meta_id++) {
-
-		$source_id = $MatchedSourceIDs[$meta_id];
-		@SourceSeqChars = split(//,$SourceSeqs[$source_id]);
-
-		my @SourceAliChars;
-		for (my $char_id=$FrameSourceStarts[$best_frame_num][$source_id];
-		     $char_id<=$FrameSourceEnds[$best_frame_num][$source_id];
-		     $char_id++) {
-		    push(@SourceAliChars,$SourceSeqChars[$char_id]);
-		}
-
-		my $amino_msa_ref = MultiAminoSeqAli(\@AminoMSA,\@SourceAliChars);
-		@AminoMSA = @{$amino_msa_ref};
-
-	    }
-
-	    # Correcting the amino ranges (to reflect precise aminos used in MSA)
-	    for (my $meta_id=0; $meta_id<$num_matched; $meta_id++) {
-
-		$source_id = $MatchedSourceIDs[$meta_id];
-		$SourceAminoRanges[$source_id] =~ /^(\d+)\.\./;
-		my $amino_range_start = $1;
-		
-		my $true_amino_range_start = $amino_range_start + $FrameSourceStarts[$best_frame_num][$source_id];
-		my $true_amino_range_end = $amino_range_start + $FrameSourceEnds[$best_frame_num][$source_id];
-
-		$SourceAminoRanges[$source_id] = $true_amino_range_start.'..'.$true_amino_range_end;
-
-	    }
-	    
-	    # We align the target sequence last so that it's (perhaps) more of an
-	    # approximation of aligning to an "exon family profile"
-	    my @TargetTrans;
-	    my @BestFrameTargetChars = split(//,$FrameTranslations[$best_frame_num]);
-	    for (my $char_id=$FrameTargetStarts[$best_frame_num];
-		 $char_id<=$FrameTargetEnds[$best_frame_num];
-		 $char_id++) {
-		push(@TargetTrans,$BestFrameTargetChars[$char_id]);
-	    }
-
-	    my $amino_msa_ref = MultiAminoSeqAli(\@TargetTrans,\@AminoMSA);
-	    @AminoMSA = @{$amino_msa_ref};
-	    my $amino_msa_len = scalar(@AminoMSA);
-
-
-	    # What are the actual nucleotide bounds of our putative coding region?
-	    my $true_nucl_start = $search_start;
-	    my $true_nucl_end;
-	    if ($revcomp) {
-		$true_nucl_start -= $best_frame_num + (3 * $FrameTargetStarts[$best_frame_num]);
-		$true_nucl_end = $true_nucl_start+1 - (3 * scalar(@TargetTrans));
-	    } else {
-		$true_nucl_start += $best_frame_num + (3 * $FrameTargetStarts[$best_frame_num]);
-		$true_nucl_end = $true_nucl_start-1 + (3 * scalar(@TargetTrans));
+				
 	    }
 
 
-	    # Next, we'll eat into the MSA from each end until we hit a match column
-	    my $start_col = 0;
-	    my $end_col = $amino_msa_len-1;
+	    # Did we not end up with any hit sets to play with?
+	    next if (scalar(@HitSetsByTargetRegion) == 0);
 
 	    
-	    # 1. Checking the left side
+	    # NOW IT'S TIME TO PARTY!!!
 	    #
-	    while ($start_col<$amino_msa_len) {
+	    # Each hit set represents a collection of high-quality (score dense)
+	    # alignments between a collection of source sequences and the same
+	    # region of the target sequence.
+	    #
+	    # The goal is to produce a (multiple) sequence alignment representing
+	    # how the source amino acid sequence(s) match with the target
+	    #
+	    foreach my $hit_set (@HitSetsByTargetRegion) {
 
-		my @Col = split(//,$AminoMSA[$start_col]);
+		$hit_set =~ /(\d+)\.\.(\d+)\:([^\:]+)\:(\S+)$/;
+		my $target_start = $1;
+		my $target_end = $2;
+		my $frame_num = $3;
+		my @HitIDs = split(/\,/,$4);
 
-		my $target_char = $Col[0];
+		my $num_matched = scalar(@HitIDs);
 
-		if ($target_char !~ /[A-Z]/) {
+		my @HitSourceIDs;
+		my @HitSourceStarts;
+		my @HitSourceEnds;
+		for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+
+		    $AllHits[$HitIDs[$match_id]] =~ /\/(\d+)\.\.(\d+)\/(\d+)$/;
+
+		    $HitSourceStarts[$match_id] = $1;
+		    $HitSourceEnds[$match_id] = $2;
+		    $HitSourceIDs[$match_id] = $3;
+		    
+		}
+		
+		
+		# Start building the multiple sequence alignment by priming
+		# with the first of the source sequences
+		my $source_id = $HitSourceIDs[0];
+		my @SourceSeqChars = split(//,$SourceSeqs[$source_id]);
+		
+		my @AminoMSA;
+		foreach my $char_id ($HitSourceStarts[0]..$HitSourceEnds[0]) {
+		    push(@AminoMSA,$SourceSeqChars[$char_id]);
+		}
+    
+		# And now for the rest of the crew...
+		for (my $match_id=1; $match_id<$num_matched; $match_id++) {
+		    
+		    $source_id = $HitSourceIDs[$match_id];
+		    @SourceSeqChars = split(//,$SourceSeqs[$source_id]);
+		    
+		    my @SourceAliChars;
+		    foreach my $char_id ($HitSourceStarts[$source_id]..$HitSourceEnds[$source_id]) {
+			push(@SourceAliChars,$SourceSeqChars[$char_id]);
+		    }
+		    
+		    my $amino_msa_ref = MultiAminoSeqAli(\@AminoMSA,\@SourceAliChars);
+		    @AminoMSA = @{$amino_msa_ref};
+		    
+		}
+		
+
+		# We align the target sequence last so that it's (perhaps) more of an
+		# approximation of aligning to an "exon family profile"
+		my @AllTargetChars = split(//,$FrameTransStrs[$frame_num]);
+		my @TargetRangeChars;
+		foreach my $char_id ($target_start..$target_end) {
+		    push(@TargetRangeChars,$AllTargetChars[$char_id]);
+		}
+		
+		my $amino_msa_ref = MultiAminoSeqAli(\@TargetRangeChars,\@AminoMSA);
+		@AminoMSA = @{$amino_msa_ref};
+		my $amino_msa_len = scalar(@AminoMSA);
+		
+		
+		# What are the actual nucleotide bounds of our putative coding region?
+		my $true_nucl_start = $search_start;
+		my $true_nucl_end;
+		if ($revcomp) {
+		    $true_nucl_start -= $frame_num + (3 * $target_start);
+		    $true_nucl_end = $true_nucl_start+1 - (3 * scalar(@TargetRangeChars));
+		} else {
+		    $true_nucl_start += $frame_num + (3 * $target_start);
+		    $true_nucl_end = $true_nucl_start-1 + (3 * scalar(@TargetRangeChars));
+		}
+		
+		
+		# Next, we'll eat into the MSA from each end until we hit a match column
+		my $start_col = 0;
+		my $end_col = $amino_msa_len-1;
+		
+		
+		# 1. Checking the left side
+		#
+		while ($start_col<$amino_msa_len) {
+		    
+		    my @Col = split(//,$AminoMSA[$start_col]);
+		    
+		    my $target_char = $Col[0];
+		    
+		    if ($target_char !~ /[A-Z]/) {
+			$start_col++;
+			if ($revcomp) { $true_nucl_start -= 3; }
+			else          { $true_nucl_start += 3; }
+			next;
+		    }
+		    
+		    my $trim_it = 1;
+		    for (my $i=1; $i<=$num_matched; $i++) {
+			if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
+			    $trim_it = 0;
+			    last;
+			}
+		    }
+		    last if (!$trim_it);
+		    
 		    $start_col++;
 		    if ($revcomp) { $true_nucl_start -= 3; }
 		    else          { $true_nucl_start += 3; }
-		    next;
+		    
 		}
-
-		my $trim_it = 1;
-		for (my $i=1; $i<=$num_matched; $i++) {
-		    if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
-			$trim_it = 0;
-			last;
+		
+		
+		# 2. Checking the right side
+		#
+		while ($end_col > $start_col) {
+		    
+		    my @Col = split(//,$AminoMSA[$end_col]);
+		    
+		    my $target_char = $Col[0];
+		    
+		    if ($target_char !~ /[A-Z]/) {
+			$end_col--;
+			if ($revcomp) { $true_nucl_end += 3; }
+			else          { $true_nucl_end -= 3; }
+			next;
 		    }
-		}
-		last if (!$trim_it);
-
-		$start_col++;
-		if ($revcomp) { $true_nucl_start -= 3; }
-		else          { $true_nucl_start += 3; }
-
-	    }
-
-
-	    # 2. Checking the right side
-	    #
-	    while ($end_col > $start_col) {
-
-		my @Col = split(//,$AminoMSA[$end_col]);
-
-		my $target_char = $Col[0];
-
-		if ($target_char !~ /[A-Z]/) {
+		    
+		    my $trim_it = 1;
+		    for (my $i=1; $i<=$num_matched; $i++) {
+			if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
+			    $trim_it = 0;
+			    last;
+			}
+		    }
+		    last if (!$trim_it);
+		    
 		    $end_col--;
 		    if ($revcomp) { $true_nucl_end += 3; }
 		    else          { $true_nucl_end -= 3; }
-		    next;
+		    
 		}
-
-		my $trim_it = 1;
-		for (my $i=1; $i<=$num_matched; $i++) {
-		    if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
-			$trim_it = 0;
-			last;
+		
+		
+		# As an additional lil' bit o' cleanup, we'll trim off any
+		# extra leading gaps from source sequences and adjust their
+		# true start / end amino coordinates
+		my @SourceStartOffsets;
+		my @SourceEndOffsets;
+		for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+		    
+		    my $col_id = $match_id+1;
+		    
+		    # Start offset
+		    my @Col = split(//,$AminoMSA[$start_col]);
+		    my $offset = 0;
+		    
+		    while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
+			
+			$Col[$col_id] = ' ';
+			$AminoMSA[$start_col+$offset] = join('',@Col);
+			
+			$offset++;
+			@Col = split(//,$AminoMSA[$start_col+$offset]);
+			
 		    }
+		    
+		    $SourceStartOffsets[$match_id] = $offset;
+		    
+		    
+		    # End offset
+		    @Col = split(//,$AminoMSA[$end_col]);
+		    $offset = 0;
+		    
+		    while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
+			
+			$Col[$col_id] = ' ';
+			$AminoMSA[$end_col-$offset] = join('',@Col);
+			
+			$offset++;
+			@Col = split(//,$AminoMSA[$end_col-$offset]);
+			
+		    }
+		    
+		    $SourceEndOffsets[$match_id] = $offset;
+		    
+		    
+		    # Let the record show that the ends are offset!
+		    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
+		    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
+
+		    
 		}
-		last if (!$trim_it);
-
-		$end_col--;
-		if ($revcomp) { $true_nucl_end += 3; }
-		else          { $true_nucl_end -= 3; }
-
-	    }
-
-
-	    # As an additional lil' bit o' cleanup, we'll trim off any
-	    # extra leading gaps from source sequences and adjust their
-	    # true start / end amino coordinates
-	    my @SourceStartOffsets;
-	    my @SourceEndOffsets;
-	    for (my $meta_id=0; $meta_id<$num_matched; $meta_id++) {
-
-		my $col_id = $meta_id+1;
-
-		# Start offset
-		my @Col = split(//,$AminoMSA[$start_col]);
-		my $offset = 0;
-
-		while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
-
-		    $Col[$col_id] = ' ';
-		    $AminoMSA[$start_col+$offset] = join('',@Col);
-
-		    $offset++;
-		    @Col = split(//,$AminoMSA[$start_col+$offset]);
-
-		}
-
-		$SourceStartOffsets[$meta_id] = $offset;
-
-
-		# End offset
-		@Col = split(//,$AminoMSA[$end_col]);
-		$offset = 0;
-
-		while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id] <= 0.0)) {
-
-		    $Col[$col_id] = ' ';
-		    $AminoMSA[$end_col-$offset] = join('',@Col);
-
-		    $offset++;
-		    @Col = split(//,$AminoMSA[$end_col-$offset]);
-
-		}
-
-		$SourceEndOffsets[$meta_id] = $offset;
-
-
-		# Let the record show that the ends are offset!
-		my $source_id = $MatchedSourceIDs[$meta_id];
-		$SourceAminoRanges[$source_id] =~ /^(\d+)\.\.(\d+)$/;
-		my $offset_start = $1 + $SourceStartOffsets[$meta_id];
-		my $offset_end   = $2 - $SourceEndOffsets[$meta_id];
-		$SourceAminoRanges[$source_id] = $offset_start.'..'.$offset_end;
 		
-	    }
-
-
-	    # Before we extend out, record the true start of the translated sequence
-	    my $translation_start = $true_nucl_start;
-	    my $translation_end   = $true_nucl_end;
-
-	    # The last thing we're going to do is extend out 60 nucls on each side
-	    # of the alignment...
-	    my $nucl_ext_len = 60;
-	    if ($revcomp) {
-		$true_nucl_start += $nucl_ext_len;
-		$true_nucl_end   -= $nucl_ext_len;
-	    } else {
-		$true_nucl_start -= $nucl_ext_len;
-		$true_nucl_end   += $nucl_ext_len;
-	    }
-	    
-
-	    # Great!  Now that we have our final nucleotide region, let's grab
-	    # those nucleotides.
-	    $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
-	    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-	    $nucl_inf = OpenSystemCommand($sfetch_cmd);
-	    $header_line = <$nucl_inf>;
-	    $nucl_seq = '';
-	    while (my $line = <$nucl_inf>) {
-		$line =~ s/\n|\r//g;
-		next if (!$line);
-		$nucl_seq = $nucl_seq.uc($line);
-	    }
-	    close($nucl_inf);
-	    @NuclSeq = split(//,$nucl_seq);
-
-
-	    # FINALLY TIME TO SKETCH OUR FINAL MSA
-	    my @MSA;
-	    my $msa_len=0;
-	    
-
-	    # 1. The lead-in nucleotides
-	    my $nucl_seq_pos = 0;
-	    while ($nucl_seq_pos < $nucl_ext_len) {
-
-		$MSA[0][$msa_len] = ' ';
-		$MSA[1][$msa_len] = lc($NuclSeq[$nucl_seq_pos]);
-
-		for (my $i=0; $i<$num_matched; $i++) {
-		    $MSA[$i+2][$msa_len] = ' ';
-		}
-
-		$nucl_seq_pos++;
-		$msa_len++;
-
-	    }
-
-	    # 2. The amino MSA
-	    #    (Where we absolutely want to record %ID-able info)
-	    my @SourceMatches;
-	    my @SourceMismatches;
-	    for (my $i=0; $i<$num_matched; $i++) {
-		$SourceMatches[$i] = 0;
-		$SourceMismatches[$i] = 0;
-	    }
-		 
-	    for (my $col_id=$start_col; $col_id<=$end_col; $col_id++) {
-
-		my @Col = split(//,$AminoMSA[$col_id]);
-
-		# 2.a. The translated target amino sequence
-		$MSA[0][$msa_len]   = ' ';
-		$MSA[0][$msa_len+1] = $Col[0];
-		$MSA[0][$msa_len+2] = ' ';
 		
-		# 2.b. The target nucleotides
-		if ($Col[0] eq '-') {
-		    $MSA[1][$msa_len]   = '-';
-		    $MSA[1][$msa_len+1] = '-';
-		    $MSA[1][$msa_len+2] = '-';
-		} elsif ($Col[0] eq ' ') {
-		    $MSA[1][$msa_len]   = lc($NuclSeq[$nucl_seq_pos++]);
-		    $MSA[1][$msa_len+1] = lc($NuclSeq[$nucl_seq_pos++]);
-		    $MSA[1][$msa_len+2] = lc($NuclSeq[$nucl_seq_pos++]);
+		# Before we extend out, record the true start of the translated sequence
+		my $translation_start = $true_nucl_start;
+		my $translation_end   = $true_nucl_end;
+		
+		# The last thing we're going to do is extend out 60 nucls on each side
+		# of the alignment...
+		my $nucl_ext_len = 60;
+		if ($revcomp) {
+		    $true_nucl_start += $nucl_ext_len;
+		    $true_nucl_end   -= $nucl_ext_len;
 		} else {
-		    $MSA[1][$msa_len]   = $NuclSeq[$nucl_seq_pos++];
-		    $MSA[1][$msa_len+1] = $NuclSeq[$nucl_seq_pos++];
-		    $MSA[1][$msa_len+2] = $NuclSeq[$nucl_seq_pos++];
+		    $true_nucl_start -= $nucl_ext_len;
+		    $true_nucl_end   += $nucl_ext_len;
 		}
-
-		# 3.b. The source amino sequence(s)
+		
+		
+		# Great!  Now that we have our final nucleotide region, let's grab
+		# those nucleotides.
+		$sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+		$nucl_inf = OpenSystemCommand($sfetch_cmd);
+		$header_line = <$nucl_inf>;
+		$nucl_seq = '';
+		while (my $line = <$nucl_inf>) {
+		    $line =~ s/\n|\r//g;
+		    next if (!$line);
+		    $nucl_seq = $nucl_seq.uc($line);
+		}
+		close($nucl_inf);
+		@NuclSeq = split(//,$nucl_seq);
+		
+		
+		# FINALLY TIME TO SKETCH OUR FINAL MSA
+		my @MSA;
+		my $msa_len=0;
+		
+		
+		# 1. The lead-in nucleotides
+		my $nucl_seq_pos = 0;
+		while ($nucl_seq_pos < $nucl_ext_len) {
+		    
+		    $MSA[0][$msa_len] = ' ';
+		    $MSA[1][$msa_len] = lc($NuclSeq[$nucl_seq_pos]);
+		    
+		    for (my $i=0; $i<$num_matched; $i++) {
+			$MSA[$i+2][$msa_len] = ' ';
+		    }
+		    
+		    $nucl_seq_pos++;
+		    $msa_len++;
+		    
+		}
+		
+		# 2. The amino MSA
+		#    (Where we absolutely want to record %ID-able info)
+		my @SourceNumMatches;
+		my @SourceNumMismatches;
 		for (my $i=0; $i<$num_matched; $i++) {
-
-		    $MSA[$i+2][$msa_len]   = ' ';
-
-		    # Periods for matches, lowercase for mismatches
-		    if ($Col[$i+1] =~ /[A-Z]/ && $Col[$i+1] eq $Col[0]) {
-			$MSA[$i+2][$msa_len+1] = '.';
-			$SourceMatches[$i]++;
+		    $SourceNumMatches[$i] = 0;
+		    $SourceNumMismatches[$i] = 0;
+		}
+		
+		for (my $col_id=$start_col; $col_id<=$end_col; $col_id++) {
+		    
+		    my @Col = split(//,$AminoMSA[$col_id]);
+		    
+		    # 2.a. The translated target amino sequence
+		    $MSA[0][$msa_len]   = ' ';
+		    $MSA[0][$msa_len+1] = $Col[0];
+		    $MSA[0][$msa_len+2] = ' ';
+		    
+		    # 2.b. The target nucleotides
+		    if ($Col[0] eq '-') {
+			$MSA[1][$msa_len]   = '-';
+			$MSA[1][$msa_len+1] = '-';
+			$MSA[1][$msa_len+2] = '-';
+		    } elsif ($Col[0] eq ' ') {
+			$MSA[1][$msa_len]   = lc($NuclSeq[$nucl_seq_pos++]);
+			$MSA[1][$msa_len+1] = lc($NuclSeq[$nucl_seq_pos++]);
+			$MSA[1][$msa_len+2] = lc($NuclSeq[$nucl_seq_pos++]);
 		    } else {
-			$MSA[$i+2][$msa_len+1] = lc($Col[$i+1]);
-			$SourceMismatches[$i]++;
+			$MSA[1][$msa_len]   = $NuclSeq[$nucl_seq_pos++];
+			$MSA[1][$msa_len+1] = $NuclSeq[$nucl_seq_pos++];
+			$MSA[1][$msa_len+2] = $NuclSeq[$nucl_seq_pos++];
 		    }
-
-		    $MSA[$i+2][$msa_len+2] = ' ';
-
+		    
+		    # 3.b. The source amino sequence(s)
+		    for (my $i=0; $i<$num_matched; $i++) {
+			
+			$MSA[$i+2][$msa_len]   = ' ';
+			
+			# Periods for matches, lowercase for mismatches
+			if ($Col[$i+1] =~ /[A-Z]/ && $Col[$i+1] eq $Col[0]) {
+			    $MSA[$i+2][$msa_len+1] = '.';
+			    $SourceNumMatches[$i]++;
+			} else {
+			    $MSA[$i+2][$msa_len+1] = lc($Col[$i+1]);
+			    $SourceNumMismatches[$i]++;
+			}
+			
+			$MSA[$i+2][$msa_len+2] = ' ';
+			
+		    }
+		    
+		    # PROGRESS!
+		    $msa_len += 3;
+		    
 		}
-
-		# PROGRESS!
-		$msa_len += 3;
 		
-	    }
-
-	    # We want to correct for any columns that weren't included on account
-	    # of being 'offset' columns on the ends of the alignment
-	    for (my $i=0; $i<$num_matched; $i++) {
-		$SourceMismatches[$i] -= $SourceStartOffsets[$i] + $SourceEndOffsets[$i];
-	    }
-
-	    # 3. The lead-out nucleotides
-	    while ($nucl_seq_pos < scalar(@NuclSeq)) {
-		$MSA[0][$msa_len] = ' ';
-		$MSA[1][$msa_len] = lc($NuclSeq[$nucl_seq_pos]);
+		# We want to correct for any columns that weren't included on account
+		# of being 'offset' columns on the ends of the alignment
 		for (my $i=0; $i<$num_matched; $i++) {
-		    $MSA[$i+2][$msa_len] = ' ';
+		    $SourceNumMismatches[$i] -= $SourceStartOffsets[$i] + $SourceEndOffsets[$i];
 		}
-		$nucl_seq_pos++;
-		$msa_len++;		
-	    }
-
-
-	    # THAT'S IT!
-	    # Now the only remaining work is the final formatting of the string!
-	    my $longest_name_len = length($target_species);
-	    foreach my $source_id (@MatchedSourceIDs) {
-		my $species = $SourceSpecies[$source_id];
-		if (length($species) > $longest_name_len) {
-		    $longest_name_len = length($species);
-		}
-	    }
-	    $longest_name_len += 4; # Two spaces on either side
-
-	    my @FormattedNames;
-	    $FormattedNames[0] = '  '.$target_species.'  ';
-	    while (length($FormattedNames[0]) < $longest_name_len) {
-		$FormattedNames[0] = ' '.$FormattedNames[0];
-	    }
-
-	    $FormattedNames[1] = ' ';
-	    while (length($FormattedNames[1]) < $longest_name_len) {
-		$FormattedNames[1] = ' '.$FormattedNames[1];
-	    }
-
-	    for (my $i=0; $i<$num_matched; $i++) {
-		$FormattedNames[$i+2] = '  '.$SourceSpecies[$MatchedSourceIDs[$i]].'  ';
-		while (length($FormattedNames[$i+2]) < $longest_name_len) {
-		    $FormattedNames[$i+2] = ' '.$FormattedNames[$i+2];
-		}
-	    }
-
-	    # Buffer in the alignment string and let 'er rip!
-	    my $ali_str = "\n\n";
-	    my $chars_per_line = 60;
-	    my $msa_pos = 0;
-	    while ($msa_pos < $msa_len) {
-
-		my $next_stop = Min($msa_len,$msa_pos+$chars_per_line);
-
-		for (my $i=0; $i<$num_matched+2; $i++) {
-
-		    $ali_str = $ali_str.$FormattedNames[$i];
-
-		    my $pos = $msa_pos;
-		    while ($pos < $next_stop) {
-			$ali_str = $ali_str.$MSA[$i][$pos++];
+		
+		# 3. The lead-out nucleotides
+		while ($nucl_seq_pos < scalar(@NuclSeq)) {
+		    $MSA[0][$msa_len] = ' ';
+		    $MSA[1][$msa_len] = lc($NuclSeq[$nucl_seq_pos]);
+		    for (my $i=0; $i<$num_matched; $i++) {
+			$MSA[$i+2][$msa_len] = ' ';
 		    }
-		    $ali_str = $ali_str."\n";
-
+		    $nucl_seq_pos++;
+		    $msa_len++;		
 		}
-
-		$ali_str = $ali_str."\n\n";
-
-		$msa_pos += 60;
 		
-	    }
-	    $ali_str = $ali_str."\n";
-
-	    # Before we spit out our alignment string, we'll also make a string with
-	    # hit metadata.
-
-	    my @SourcePctsID;
-	    my @SourceRatios;
-	    for (my $i=0; $i<$num_matched; $i++) {
-
-		my $ratio = $SourceMatches[$i]+$SourceMismatches[$i];
-		my $pct_id = int(1000.0 * $SourceMatches[$i] / $ratio);
-		$ratio = '('.$SourceMatches[$i].'/'.$ratio.')';
-
-		# Formatting: Will we need to add a '.0'
-		if ($pct_id % 10 == 0) {
-		    $pct_id = $pct_id / 10.0;
-		    $pct_id = $pct_id.'.0%';
+		
+		# THAT'S IT!
+		# Now the only remaining work is the final formatting of the string!
+		my $longest_name_len = length($target_species);
+		foreach my $source_id (@HitSourceIDs) {
+		    my $species = $SourceSpecies[$source_id];
+		    if (length($species) > $longest_name_len) {
+			$longest_name_len = length($species);
+		    }
+		}
+		$longest_name_len += 4; # Two spaces on either side
+		
+		my @FormattedNames;
+		$FormattedNames[0] = '  '.$target_species.'  ';
+		while (length($FormattedNames[0]) < $longest_name_len) {
+		    $FormattedNames[0] = ' '.$FormattedNames[0];
+		}
+		
+		$FormattedNames[1] = ' ';
+		while (length($FormattedNames[1]) < $longest_name_len) {
+		    $FormattedNames[1] = ' '.$FormattedNames[1];
+		}
+		
+		for (my $i=0; $i<$num_matched; $i++) {
+		    $FormattedNames[$i+2] = '  '.$SourceSpecies[$HitSourceIDs[$i]].'  ';
+		    while (length($FormattedNames[$i+2]) < $longest_name_len) {
+			$FormattedNames[$i+2] = ' '.$FormattedNames[$i+2];
+		    }
+		}
+		
+		# Buffer in the alignment string and let 'er rip!
+		my $ali_str = "\n\n";
+		my $chars_per_line = 60;
+		my $msa_pos = 0;
+		while ($msa_pos < $msa_len) {
+		    
+		    my $next_stop = Min($msa_len,$msa_pos+$chars_per_line);
+		    
+		    for (my $i=0; $i<$num_matched+2; $i++) {
+			
+			$ali_str = $ali_str.$FormattedNames[$i];
+			
+			my $pos = $msa_pos;
+			while ($pos < $next_stop) {
+			    $ali_str = $ali_str.$MSA[$i][$pos++];
+			}
+			$ali_str = $ali_str."\n";
+			
+		    }
+		    
+		    $ali_str = $ali_str."\n\n";
+		    
+		    $msa_pos += 60;
+		    
+		}
+		$ali_str = $ali_str."\n";
+		
+		# Before we spit out our alignment string, we'll also make a string with
+		# hit metadata.
+		
+		my @SourcePctsID;
+		for (my $i=0; $i<$num_matched; $i++) {
+		    
+		    my $pct_id = int(1000.0 * $SourceNumMatches[$i] / ($SourceNumMatches[$i] + $SourceNumMismatches[$i]));
+		    
+		    # Formatting: Will we need to add a '.0'
+		    if ($pct_id % 10 == 0) {
+			$pct_id = $pct_id / 10.0;
+			$pct_id = $pct_id.'.0%';
+		    } else {
+			$pct_id = $pct_id / 10.0;
+			$pct_id = $pct_id.'%';
+		    }
+		    $pct_id = $pct_id.' alignment identity';
+		    
+		    push(@SourcePctsID,$pct_id);
+		    
+		}
+		
+		
+		# Metadata item 1: Target sequence info.
+		my $meta_str = "\n";
+		$meta_str = $meta_str."  Target : $target_species $chr";
+		$meta_str = $meta_str.'[revcomp]' if ($revcomp);
+		$meta_str = $meta_str.":$translation_start..$translation_end\n";
+		
+		if ($novel_exon) {
+		    $meta_str = $meta_str."         : Novel exon (no GTF overlaps)\n";
 		} else {
-		    $pct_id = $pct_id / 10.0;
-		    $pct_id = $pct_id.'%';
+		    $meta_str = $meta_str."         : Overlaps with GTF entry\n";
 		}
-		$pct_id = $pct_id.' alignment identity';
-
-		push(@SourcePctsID,$pct_id);
-		push(@SourceRatios,$ratio);
+		
+		# Metadata item 2: Where in the species MSA are these source sequences?
+		$meta_str = $meta_str."  Source : Species-level MSA exon";
+		if ($msa_start_exon == $msa_end_exon) {
+		    $meta_str = $meta_str." $msa_start_exon\n";
+		} else {
+		    $meta_str = $meta_str."s $msa_start_exon..$msa_end_exon\n";
+		}
+		
+		# Metadata item 3: Specific source sequence info.
+		for (my $i=0; $i<$num_matched; $i++) {
+		    $source_id = $HitSourceIDs[$i];
+		    $meta_str  = $meta_str."         : $SourceSpecies[$source_id]";
+		    $meta_str  = $meta_str." / aminos $HitSourceStarts[$i]\.\.$HitSourceEnds[$i]";
+		    $meta_str  = $meta_str." / $SourcePctsID[$i]";
+		    $meta_str  = $meta_str."\n";
+		}
+		
+		
+		# Print the alignment!!!
+		print $outf "\n\n-----------------------------------------------\n" if ($i);
+		print $outf "$meta_str";
+		print $outf "$ali_str";
+		
 		
 	    }
 
-	    # Metadata item 1: Target sequence info.
-	    my $meta_str = "\n";
-	    $meta_str = $meta_str."  Target : $target_species $chr";
-	    $meta_str = $meta_str.'[revcomp]' if ($revcomp);
-	    $meta_str = $meta_str.":$translation_start..$translation_end\n";
-
-	    if ($novel_exon) {
-		$meta_str = $meta_str."         : Novel exon (no GTF overlaps)\n";
-	    } else {
-		$meta_str = $meta_str."         : Overlaps with GTF entry\n";
-	    }
-
-	    # Metadata item 2: Where in the species MSA are these source sequences?
-	    $meta_str = $meta_str."  Source : Species-level MSA exon";
-	    if ($msa_start_exon == $msa_end_exon) {
-		$meta_str = $meta_str." $msa_start_exon\n";
-	    } else {
-		$meta_str = $meta_str."s $msa_start_exon..$msa_end_exon\n";
-	    }
-
-	    # Metadata item 3: Specific source sequence info.
-	    for (my $i=0; $i<$num_matched; $i++) {
-		$source_id = $MatchedSourceIDs[$i];
-		$meta_str  = $meta_str."         : $SourceSpecies[$source_id]";
-		$meta_str  = $meta_str." / aminos $SourceAminoRanges[$source_id]";
-		$meta_str  = $meta_str." / $SourcePctsID[$i]"; # " $SourceRatios[$i]";
-		$meta_str  = $meta_str."\n";
-	    }
-
-	    # Print the alignment!!!
-	    print $outf "\n\n-----------------------------------------------\n" if ($i);
-	    print $outf "$meta_str";
-	    print $outf "$ali_str";
-	    
 	}
-
+	    
 	# We're officially done with this target species!
 	close($outf);
-
+	
 	# Do a check to see if we actually reported any hits...
 	if (!(-s $outfname)) { RunSystemCommand("rm \"$outfname\""); }
-
+	
     }
 
 }
@@ -3118,30 +3133,252 @@ sub RecordGhostMSAs
 
 ###############################################################
 #
+#  Function:  RangesOverlap
+#
+sub RangesOverlap
+{
+    my $range1 = shift;
+    my $range2 = shift;
+
+    $range1 =~ /^(\d+)\.\.(\d+)$/;
+    my $r1_start = $1;
+    my $r1_end   = $2;
+
+    $range2 =~ /^(\d+)\.\.(\d+)$/;
+    my $r2_start = $1;
+    my $r2_end   = $2;
+
+    my $overlap = 0;
+    my $full_start = 0;
+    my $full_end = 0;
+    
+    if ($r1_start < $r1_end) {
+
+	# Forward strand (if we're looking at genomic sequence)
+	if (($r1_start <= $r2_start && $r1_end >= $r2_start)
+	    || ($r2_start <= $r1_start && $r2_end >= $r1_start)) {
+
+	    $overlap = 1;
+	    $full_start = Min($r1_start,$r2_start);
+	    $full_end = Max($r1_end,$r2_end);
+	    
+	}
+
+    } elsif (($r1_start >= $r2_start && $r1_end <= $r2_start)
+	     || ($r2_start >= $r1_start && $r2_end <= $r1_start)) {
+
+	# Reverse strand
+	$overlap = 1;
+	$full_start = Max($r1_start,$r2_start);
+	$full_end = Min($r1_end,$r2_end);
+
+    }
+
+    return ($overlap,$full_start.'..'.$full_end);
+    
+}
+
+
+
+
+###############################################################
+#
+#  Function:  GatherBestLocalAlis
+#
+#  This is a recursive function used to find as many local alignments between
+#  a given target and source as possible.
+#
+#  We find the best local alignment between the full target and source, and then
+#  search the upper-left (defined by the start of the local alignment) and the
+#  bottom-right (defined by the end of the local alignment) for their best
+#  local alignments, going until the density of the best alignment drops below a
+#  threshold or we don't have sufficient space to expect to find a good alignment.
+#
+sub GatherBestLocalAlis
+{
+    my $target_chars_ref = shift;
+    my $target_start     = shift;
+
+    my $source_chars_ref = shift;
+    my $source_start     = shift;
+    
+    my @TargetChars = @{$target_chars_ref};
+    my @SourceChars = @{$source_chars_ref};
+    
+    my $num_target_chars = scalar(@TargetChars);
+    my $num_source_chars = scalar(@SourceChars);
+    
+
+    my ($score_density,$target_ali_start,$target_ali_end,$source_ali_start,$source_ali_end)
+	= LocalAlign(\@TargetChars,\@SourceChars);
+
+    
+    # Did we not find anything we're excited about?
+    return (0,0,0,0) if ($score_density < 3);
+
+    
+    my $true_target_ali_start = $target_ali_start + $target_start;
+    my $true_target_ali_end   = $target_ali_end   + $target_start;
+    
+    my $true_source_ali_start = $source_ali_start + $source_start;
+    my $true_source_ali_end   = $source_ali_end   + $source_start;
+
+    
+    my $target_ali_range = $true_target_ali_start.'..'.$true_target_ali_end;
+    my $source_ali_range = $true_source_ali_start.'..'.$true_source_ali_end;
+
+
+    my $num_alis = 1;
+    my @ScoreDensities;
+    my @TargetRanges;
+    my @SourceRanges;
+    
+    push(@ScoreDensities,$score_density);
+    push(@TargetRanges,$target_ali_range);
+    push(@SourceRanges,$source_ali_range);
+
+
+    # Now we see what's good to the left and right of *this* optimal local alignment
+    my $min_ali_len = 8;
+
+    
+    my @LeftDensities;
+    my @LeftTargetRanges;
+    my @LeftSourceRanges;
+    if (Min($target_ali_start,$source_ali_start) > $min_ali_len) {
+
+	my @LeftTargetChars;
+	for (my $i=0; $i<$target_ali_start; $i++) {
+	    push(@LeftTargetChars,$TargetChars[$i]);
+	}
+
+	my @LeftSourceChars;
+	for (my $j=0; $j<$source_ali_start; $j++) {
+	    push(@LeftSourceChars,$SourceChars[$j]);
+	}
+	
+	my ($num_left_alis,$left_dens_ref,$left_target_ranges_ref,$left_source_ranges_ref)
+	    = GatherBestLocalAlis(\@LeftTargetChars,$target_start,
+				  \@LeftSourceChars,$source_start);
+
+	if ($num_left_alis) {
+	    @LeftDensities = @{$left_dens_ref};
+	    @LeftTargetRanges = @{$left_target_ranges_ref};
+	    @LeftSourceRanges = @{$left_source_ranges_ref};
+	}
+	
+    }
+
+    
+    my @RightDensities;
+    my @RightTargetRanges;
+    my @RightSourceRanges;
+    if (Min($num_target_chars-$target_ali_end,$num_source_chars-$source_ali_end)-1 > $min_ali_len) {
+
+	my @RightTargetChars;
+	for (my $i=$target_ali_end+1; $i<$num_target_chars; $i++) {
+	    push(@RightTargetChars,$TargetChars[$i]);
+	}
+
+	my @RightSourceChars;
+	for (my $j=$source_ali_end+1; $j<$num_source_chars; $j++) {
+	    push(@RightSourceChars,$SourceChars[$j]);
+	}
+	
+	my ($num_right_alis,$right_dens_ref,$right_target_ranges_ref,$right_source_ranges_ref)
+	    = GatherBestLocalAlis(\@RightTargetChars,$true_target_ali_end+1,
+				  \@RightSourceChars,$true_source_ali_end+1);
+
+	if ($num_right_alis) {
+	    @RightDensities = @{$right_dens_ref};
+	    @RightTargetRanges = @{$right_target_ranges_ref};
+	    @RightSourceRanges = @{$right_source_ranges_ref};
+	}
+	
+    }
+
+    
+    # Merge 'em!
+    my $left_index = 0;
+    my $right_index = 0;
+    while ($left_index < scalar(@LeftDensities) && $right_index < scalar(@RightDensities)) {
+	
+	if ($LeftDensities[$left_index] > $RightDensities[$right_index]) {
+
+	    $ScoreDensities[$num_alis] = $LeftDensities[$left_index];
+	    $TargetRanges[$num_alis] = $LeftTargetRanges[$left_index];
+	    $SourceRanges[$num_alis] = $LeftSourceRanges[$left_index];
+
+	    $num_alis++;
+	    $left_index++;
+	    
+	} else {
+
+	    $ScoreDensities[$num_alis] = $RightDensities[$right_index];
+	    $TargetRanges[$num_alis] = $RightTargetRanges[$right_index];
+	    $SourceRanges[$num_alis] = $RightSourceRanges[$right_index];
+
+	    $num_alis++;
+	    $right_index++;
+
+	}
+	
+    }
+
+    while ($left_index < scalar(@LeftDensities)) {
+
+	$ScoreDensities[$num_alis] = $LeftDensities[$left_index];
+	$TargetRanges[$num_alis] = $LeftTargetRanges[$left_index];
+	$SourceRanges[$num_alis] = $LeftSourceRanges[$left_index];
+	
+	$num_alis++;
+	$left_index++;
+	    
+    }
+
+    while ($right_index < scalar(@RightDensities)) {
+	
+	$ScoreDensities[$num_alis] = $RightDensities[$right_index];
+	$TargetRanges[$num_alis] = $RightTargetRanges[$right_index];
+	$SourceRanges[$num_alis] = $RightSourceRanges[$right_index];
+	
+	$num_alis++;
+	$right_index++;
+
+    }
+
+    return ($num_alis,\@ScoreDensities,\@TargetRanges,\@SourceRanges);
+    
+}
+    
+
+
+
+
+###############################################################
+#
 #  Function:  LocalAlign
 #
 sub LocalAlign
 {
 
-    my $str1 = shift;
-    my $str2 = shift;
+    my $seq1_ref = shift;
+    my $seq2_ref = shift;
 
-    my @Seq1 = split(//,uc($str1));
+    my @Seq1 = @{$seq1_ref};
     my $len1 = scalar(@Seq1);
 
-    my @Seq2 = split(//,uc($str2));
+    my @Seq2 = @{$seq2_ref};
     my $len2 = scalar(@Seq2);
 
     my @Matrix;
     for (my $i=0; $i<=$len1; $i++) { $Matrix[$i][0] = 0; }
     for (my $j=0; $j<=$len2; $j++) { $Matrix[0][$j] = 0; }
 
-    # First off, we'll find the highest scoring coordinate under a
-    # local alignment scheme
+    # Fill in the matrix
     my $max_i;
     my $max_j;
     my $max_score = 0;
-    my @ExtMatrix;
     for (my $i=0; $i<$len1; $i++) {
 	for (my $j=0; $j<$len2; $j++) {
 
@@ -3152,22 +3389,16 @@ sub LocalAlign
 
 	    $Matrix[$i+1][$j+1] = 0 if ($Matrix[$i+1][$j+1] < 0);
 
-	    if ($max_score <= $Matrix[$i+1][$j+1]) {
+	    if ($max_score < $Matrix[$i+1][$j+1]) {
 		$max_score = $Matrix[$i+1][$j+1];
 		$max_i = $i+1;
 		$max_j = $j+1;
 	    }
 	    
-	    $ExtMatrix[$i][$j] = 0;
-
 	}
     }
 
-    # If the max score indicates that we weren't able to get a reasonably exon-y
-    # alignment going, jump off
-    if ($max_score < 20) {
-	return(-1,0,0,0,0);
-    }
+    return (-1,0,0,0,0) if ($max_score < 25.0);
 
     # TRACEBACK!
     my $start_i = $max_i;
@@ -3175,6 +3406,9 @@ sub LocalAlign
 
     my $penult_i = $max_i;
     my $penult_j = $max_j;
+
+    my $ali_len = 0;
+    
     while ($Matrix[$start_i][$start_j] > 0) {
 
 	$penult_i = $start_i;
@@ -3199,16 +3433,20 @@ sub LocalAlign
 	    
 	}
 	
+	$ali_len++;
+
     }
 
     $start_i = $penult_i;
     $start_j = $penult_j;
 
+    my $score_density = $max_score / $ali_len;
+    
     # FINALLY!  Note that we're returning the original max local score,
     # which may not be representative of where we've trimmed the alignment.
     # NOTE that we need to reduce by 1 because our matrix corresponds to
-    #   1-indexed sequences.    
-    return($max_score,$start_i-1,$max_i-1,$start_j-1,$max_j-1);
+    #   1-indexed sequences.
+    return($score_density,$start_i-1,$max_i-1,$start_j-1,$max_j-1);
 
 }
 
