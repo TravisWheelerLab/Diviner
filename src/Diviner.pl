@@ -490,7 +490,7 @@ sub ParseArgs
         outdirname => 'Diviner-Results',
         savemsas => 0,
 	alicutoff => 0.4,
-	density => 1.5
+	density => 2
         );
 
     &GetOptions( 
