@@ -2764,7 +2764,7 @@ sub RecordGhostMSAs
 		    @SourceSeqChars = split(//,$SourceSeqs[$source_id]);
 		    
 		    my @SourceAliChars;
-		    foreach my $char_id ($HitSourceStarts[$source_id]..$HitSourceEnds[$source_id]) {
+		    foreach my $char_id ($HitSourceStarts[$match_id]..$HitSourceEnds[$match_id]) {
 			push(@SourceAliChars,$SourceSeqChars[$char_id]);
 		    }
 		    
@@ -3161,7 +3161,7 @@ sub RecordGhostMSAs
 		
 		
 		# Print the alignment!!!
-		print $outf "\n\n-----------------------------------------------\n" if ($i);
+		print $outf "\n-----------------------------------------------\n\n" if ($i);
 		print $outf "$meta_str";
 		print $outf "$ali_str";
 		
