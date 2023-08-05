@@ -3425,6 +3425,9 @@ sub LocalAlign
     my $seq1_ref = shift;
     my $seq2_ref = shift;
 
+    # NOTE: As used in 'GatherBestLocalAlis' the target (translated) sequences
+    #       is passed in as Seq1 and the source sequence is passed in as Seq2.
+
     my @Seq1 = @{$seq1_ref};
     my $len1 = scalar(@Seq1);
 
@@ -3441,6 +3444,12 @@ sub LocalAlign
     my $max_score = 0;
     for (my $i=0; $i<$len1; $i++) {
 	for (my $j=0; $j<$len2; $j++) {
+
+	    # Stop codon check (we'll do both Seq1 and Seq2 -- why not?)
+	    if ($Seq1[$i] eq '*' || $Seq2[$j] eq '*') {
+		$Matrix[$i+1][$j+1] = 0;
+		next;
+	    }
 
 	    my $match_score = GetB62Score($Seq1[$i],$Seq2[$j]) + $Matrix[$i][$j];
 
