@@ -102,6 +102,7 @@ my $bad_ali_cutoff = $Options{alicutoff};
 my $dependencies_ref = FindDependencies();
 my %Dependencies = %{$dependencies_ref};
 
+
 # We're going to need these friends
 my $sindex  = $Dependencies{'sindex'};
 my $sfetch  = $Dependencies{'sfetch'};
@@ -192,28 +193,6 @@ if (scalar(keys %SpeciesToGenomes) == 0) {
 }
 
 
-# Now that we know that we have solid inputs, we'll create the output directory
-my $outdirname  = CreateDirectory($Options{outdirname});
-my $outgenesdir = CreateDirectory($outdirname.'Results-by-Gene');
-my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
-
-
-# If we're writing out to a file, make a directory to store our spliced msas.
-# If such a directory already exists, warn about overwriting, but trust that
-# the most recent version of the software will give the best output.
-my $spliced_dirname = $input_dirname.'Marked-Splice-Sites-MSAs/';
-if ($save_msas) {
-    if (-d $spliced_dirname) {
-	print "\n";
-	print "  Warning:  Existing directory of MSAs with marked splice sites located ($spliced_dirname)\n";
-	print "            MSAs may be overwritten.\n\n";
-    } else {
-	CreateDirectory($spliced_dirname);
-    }
-    $spliced_dirname = ConfirmDirectory($spliced_dirname);
-}
-
-
 # We'll do a preliminary run through 'FinalMSAs' to compute the total number of
 # genes, so that we can figure out how to allocate work for each of our processes.
 my $FinalMSAs = OpenDirectory($final_results_dirname);
@@ -225,8 +204,20 @@ while (my $fname = readdir($FinalMSAs)) {
 closedir($FinalMSAs);
 
 
+# Quick sanity check
+if (scalar(@GeneList) == 0) {
+    die "\n  ERROR:  No MSA files were found in '$final_results_dirname'...?\n\n";
+}
+
+
 # Are we asking for too many cpus?
 $num_cpus = Min($num_cpus,scalar(@GeneList));
+
+
+# Now that we know that we have solid inputs, we'll create the output directory
+my $outdirname  = CreateDirectory($Options{outdirname});
+my $outgenesdir = CreateDirectory($outdirname.'Results-by-Gene');
+my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
 
 
 # Things are looking good if we've made it this far without complaint,
@@ -2745,8 +2736,8 @@ sub RecordGhostMSAs
 		    $HitSourceIDs[$match_id] = $3;
 
 		}
-		
-		
+
+
 		# Start building the multiple sequence alignment by priming
 		# with the first of the source sequences
 		my $source_id = $HitSourceIDs[0];
@@ -2873,45 +2864,53 @@ sub RecordGhostMSAs
 		my @SourceEndOffsets;
 		for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 		    
-		    my $col_id = $match_id+1;
+		    my $row_id = $match_id+1;
 		    
+
 		    # Start offset
-		    my @Col = split(//,$AminoMSA[$start_col]);
+		    my $col_id = $start_col;
 		    my $offset = 0;
-		    
-		    while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
+
+		    my @Col = split(//,$AminoMSA[$col_id]);
+
+		    while ($Col[$row_id] eq '-' || GetB62Score($Col[0],$Col[$row_id]) < 0.0) {
+
+			$offset++ if ($Col[$row_id] ne '-');
+
+			$Col[$row_id] = ' ';
+			$AminoMSA[$col_id] = join('',@Col);
 			
-			$Col[$col_id] = ' ';
-			$AminoMSA[$start_col+$offset] = join('',@Col);
-			
-			$offset++;
-			@Col = split(//,$AminoMSA[$start_col+$offset]);
+			@Col = split(//,$AminoMSA[++$col_id]);
 			
 		    }
 		    
 		    $SourceStartOffsets[$match_id] = $offset;
-		    
-		    
+
+
 		    # End offset
-		    @Col = split(//,$AminoMSA[$end_col]);
+		    $col_id = $end_col;
 		    $offset = 0;
+
+		    @Col = split(//,$AminoMSA[$col_id]);
 		    
-		    while ($Col[$col_id] eq '-' || GetB62Score($Col[0],$Col[$col_id]) <= 0.0) {
+		    while ($Col[$row_id] eq '-' || GetB62Score($Col[0],$Col[$row_id]) < 0.0) {
 			
-			$Col[$col_id] = ' ';
-			$AminoMSA[$end_col-$offset] = join('',@Col);
+			$offset++ if ($Col[$row_id] ne '-');
+
+			$Col[$row_id] = ' ';
+			$AminoMSA[$col_id] = join('',@Col);
 			
-			$offset++;
-			@Col = split(//,$AminoMSA[$end_col-$offset]);
+			@Col = split(//,$AminoMSA[--$col_id]);
 			
 		    }
 		    
 		    $SourceEndOffsets[$match_id] = $offset;
-		    
-		    
+		   
+
 		    # Let the record show that the ends are offset!
 		    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
 		    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
+
 
 		    # Finally, we need to make sure that these coordinates reflect
 		    # the position of the source range in the MSA -- not just this
@@ -2921,6 +2920,7 @@ sub RecordGhostMSAs
 		    $HitSourceStarts[$match_id] += $global_amino_range_start;
 		    $HitSourceEnds[$match_id]   += $global_amino_range_start;
 		    
+
 		}
 		
 		
@@ -3425,6 +3425,9 @@ sub LocalAlign
     my $seq1_ref = shift;
     my $seq2_ref = shift;
 
+    # NOTE: As used in 'GatherBestLocalAlis' the target (translated) sequences
+    #       is passed in as Seq1 and the source sequence is passed in as Seq2.
+
     my @Seq1 = @{$seq1_ref};
     my $len1 = scalar(@Seq1);
 
@@ -3441,6 +3444,12 @@ sub LocalAlign
     my $max_score = 0;
     for (my $i=0; $i<$len1; $i++) {
 	for (my $j=0; $j<$len2; $j++) {
+
+	    # Stop codon check (we'll do both Seq1 and Seq2 -- why not?)
+	    if ($Seq1[$i] eq '*' || $Seq2[$j] eq '*') {
+		$Matrix[$i+1][$j+1] = 0;
+		next;
+	    }
 
 	    my $match_score = GetB62Score($Seq1[$i],$Seq2[$j]) + $Matrix[$i][$j];
 
@@ -4253,7 +4262,7 @@ sub RecordHitsByPctID
 		    my $source_species = $1;
 		    my $ali_len = $3 - $2 + 1;
 		    my $pct_id = $4;
-		    
+
 		    my $hash_val = $gene.':'.$source_species.'>'.$target_species.'('.$genome_coords.'):'.$ali_len.'&'.$is_novel_exon;
 		    
 		    if ($PctIDtoHits{$pct_id}) {
@@ -4311,7 +4320,7 @@ sub RecordHitsByPctID
 		$hit =~ /^([^\&]+)\&(\d)$/;
 		my $hit_str  = $1;
 		my $is_novel = $2;
-		
+
 		$hit_str =~ /^([^\:]+)\:(\S+)\>(\S+)(\(\S+\))\:(\d+)/;
 		my $gene = $1;
 		my $source_species = $2;
