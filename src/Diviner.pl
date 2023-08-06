@@ -4359,14 +4359,9 @@ sub RecordHitsByPctID
 	while (length($pct_id) < 6) {
 	    $pct_id = ' '.$pct_id;
 	}
-	my $spacer = ' ';
-	while (length($spacer) < 6) {
-	    $spacer = ' '.$spacer;
-	}
 	
-	print $OutFile "$pct_id :$OrderedHits[0]\n";
-	for (my $i=1; $i<scalar(@OrderedHits); $i++) {
-	    print $OutFile "$spacer  $OrderedHits[$i]\n";
+	for (my $i=0; $i<scalar(@OrderedHits); $i++) {
+	    print $OutFile "$pct_id :$OrderedHits[$i]\n";
 	}
 	
     }
