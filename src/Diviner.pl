@@ -2919,11 +2919,90 @@ sub RecordGhostMSAs
 		    my $global_amino_range_start = $1;
 		    $HitSourceStarts[$match_id] += $global_amino_range_start;
 		    $HitSourceEnds[$match_id]   += $global_amino_range_start;
-		    
+
 
 		}
 		
 		
+		# Let's go out to the genome mappings for each of our source species
+		# and figure out what coordinates on their genomes correspond to the
+		# exon that we found (lifty-overy-stuffy)
+		my @SourceLiftStrs;
+		my $MapCoordFile = OpenInputFile($genedir.'genome-mappings.out');
+		while (my $line = <$MapCoordFile>) {
+
+		    next if ($line !~ /Species\s+\:\s+(\S+)/);
+		    my $species = $1;
+
+		    my $match_id = 0;
+		    while ($match_id < $num_matched) {
+			if ($SourceSpecies[$HitSourceIDs[$match_id]] eq $species) {
+			    last;
+			}
+			$match_id++;
+		    }
+
+		    next if ($match_id >= $num_matched);
+
+		    my $source_start = $HitSourceStarts[$match_id];
+		    my $source_end   = $HitSourceEnds[$match_id];
+
+		    my @SourceMapRanges;
+
+		    # Great!  Let's grab some coord.s!
+		    $line = <$MapCoordFile>;
+		    $line =~ /Chromosome\s+\:\s+(\S+)/;
+
+		    my $source_chr = $1;
+
+		    $line = <$MapCoordFile>;
+		    $line =~ /Num Exons\s+\:\s+(\d+)/;
+
+		    my $source_num_exons = $1;
+
+		    my $protein_index = 1;
+		    for (my $exon_id=0; $exon_id<$source_num_exons; $exon_id++) {
+
+			$line = <$MapCoordFile>; # Exon meta
+			$line = <$MapCoordFile>; # Exon coord.s
+
+			$line =~ s/\n|\r//g;
+			my @SourceExonCoords = split(/\,/,$line);
+
+			my $exon_index = 0;
+			while ($protein_index < $source_start && $exon_index < scalar(@SourceExonCoords)) {
+			    $protein_index++;
+			    $exon_index++;
+			}
+
+			# Did we exhaust this exon?
+			next if ($exon_index == scalar(@SourceExonCoords));
+			
+			# We're in the key region!
+			my $exon_map_range = $SourceExonCoords[$exon_index];
+
+			while ($protein_index <= $source_end && $exon_index < scalar(@SourceExonCoords)) {
+			    $protein_index++;
+			    $exon_index++;
+			}
+
+			$exon_map_range = $exon_map_range.'..'.$SourceExonCoords[$exon_index-1];
+
+			push(@SourceMapRanges,$exon_map_range);
+			
+		    }
+
+		    my $source_map_str = $source_chr.':'.$SourceMapRanges[0];
+		    for (my $smr_id=1; $smr_id<scalar(@SourceMapRanges); $smr_id++) {
+			$source_map_str = $source_map_str.','.$SourceMapRanges[$smr_id];
+		    }
+
+		    $SourceLiftStrs[$match_id] = $source_map_str;
+
+		}
+		close($MapCoordFile);
+		
+
 		# Before we extend out, record the true start of the translated sequence
 		my $translation_start = $true_nucl_start;
 		my $translation_end   = $true_nucl_end;
@@ -3155,6 +3234,7 @@ sub RecordGhostMSAs
 		    $source_id = $HitSourceIDs[$i];
 		    $meta_str  = $meta_str."         : $SourceSpecies[$source_id]";
 		    $meta_str  = $meta_str." / aminos $HitSourceStarts[$i]\.\.$HitSourceEnds[$i]";
+		    $meta_str  = $meta_str." ($SourceLiftStrs[$i])";
 		    $meta_str  = $meta_str." / $SourcePctsID[$i]";
 		    $meta_str  = $meta_str."\n";
 		}
@@ -4345,8 +4425,8 @@ sub RecordHitsByPctID
 		}
 		
 		my $formatted_str;
-		if ($is_novel) { $formatted_str = '[*] '; }
-		else           { $formatted_str = '[ ] '; }
+		if ($is_novel) { $formatted_str = '[Novel] '; }
+		else           { $formatted_str = '[ GTF ] '; }
 		$formatted_str = $formatted_str."$gene $source_species -> $target_species ";
 		$formatted_str = $formatted_str."$target_chr $ali_len aminos";
 		
