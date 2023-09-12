@@ -1912,10 +1912,9 @@ sub FindGhostExons
 
 	    # These are the start and end coordinates within the species MSA,
 	    # allowing for recovery of specific aminos in that context later
-	    my $hit_amino_start = $HitAminoStarts[$hit] + $ExonAminoStartIndices[$SpeciesToIndex{$target_species}-1][$start_exon-1];
+	    my $hit_amino_start = $HitAminoStarts[$hit] + $ExonAminoStartIndices[$SpeciesToIndex{$source_species}-1][$start_exon-1];
 	    my $hit_amino_end = $hit_amino_start + ($HitAminoEnds[$hit] - $HitAminoStarts[$hit]);
 
-	    #print $outf "    + Aminos $HitAminoStarts[$hit]..$HitAminoEnds[$hit] ";
 	    print $outf "    + Aminos $hit_amino_start..$hit_amino_end ";
 	    print $outf "mapped to $target_species $chr:$HitNuclStarts[$hit]..$HitNuclEnds[$hit] ";
 	    print $outf "($HitEVals[$hit])\n";
