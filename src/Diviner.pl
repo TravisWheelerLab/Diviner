@@ -2985,15 +2985,21 @@ sub RecordGhostMSAs
 			    $exon_index++;
 			}
 
-			$exon_map_range = $exon_map_range.'..'.$SourceExonCoords[$exon_index-1];
+			# Not really interested in 'x..x'
+			if ($exon_map_range != $SourceExonCoords[$exon_index-1]) {
+			    $exon_map_range = $exon_map_range.'..'.$SourceExonCoords[$exon_index-1];
+			}
 
 			push(@SourceMapRanges,$exon_map_range);
+
+			# If we're done, we're done, baby!
+			last if ($protein_index >= $source_end);
 			
 		    }
 
 		    my $source_map_str = $source_chr.':'.$SourceMapRanges[0];
 		    for (my $smr_id=1; $smr_id<scalar(@SourceMapRanges); $smr_id++) {
-			$source_map_str = $source_map_str.','.$SourceMapRanges[$smr_id];
+			$source_map_str = $source_map_str.'/'.$SourceMapRanges[$smr_id];
 		    }
 
 		    $SourceLiftStrs[$match_id] = $source_map_str;
