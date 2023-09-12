@@ -4424,8 +4424,8 @@ sub RecordHitsByPctID
 		}
 		
 		my $formatted_str;
-		if ($is_novel) { $formatted_str = '[Novel] '; }
-		else           { $formatted_str = '[ GTF ] '; }
+		if ($is_novel) { $formatted_str = '[ Novel ] '; }
+		else           { $formatted_str = '[  GTF  ] '; }
 		$formatted_str = $formatted_str."$gene $source_species -> $target_species ";
 		$formatted_str = $formatted_str."$target_chr $ali_len aminos";
 		
