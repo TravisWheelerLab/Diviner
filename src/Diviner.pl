@@ -2907,9 +2907,18 @@ sub RecordGhostMSAs
 		   
 
 		    # Let the record show that the ends are offset!
-		    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
-		    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
+                    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
+                    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
 
+		    # We also want the HitSourceStart/End coordinates to correspond
+		    # to the aminos' positions in the full sequence, not just
+		    # relative to the region of interest.
+                    $SourceAminoRanges[$HitSourceIDs[$match_id]] =~ /^(\d+)\.\./;
+                    my $global_amino_range_start = $1;
+                    $HitSourceStarts[$match_id] += $global_amino_range_start;
+                    $HitSourceEnds[$match_id]   += $global_amino_range_start;
+		    
+		    
 		}
 		
 		
@@ -3234,7 +3243,7 @@ sub RecordGhostMSAs
 		for (my $i=0; $i<$num_matched; $i++) {
 		    $source_id = $HitSourceIDs[$i];
 		    $meta_str  = $meta_str."         : $SourceSpecies[$source_id]";
-		    $meta_str  = $meta_str." / aminos $HitSourceStarts[$i]\.\.$HitSourceEnds[$i]";
+		    $meta_str  = $meta_str." / aminos $ ";
 		    $meta_str  = $meta_str." ($SourceLiftStrs[$i])";
 		    $meta_str  = $meta_str." / $SourcePctsID[$i]";
 		    $meta_str  = $meta_str."\n";
