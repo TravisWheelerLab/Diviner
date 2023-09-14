@@ -2910,16 +2910,6 @@ sub RecordGhostMSAs
 		    $HitSourceStarts[$match_id] += $SourceStartOffsets[$match_id];
 		    $HitSourceEnds[$match_id]   -= $SourceEndOffsets[$match_id];
 
-
-		    # Finally, we need to make sure that these coordinates reflect
-		    # the position of the source range in the MSA -- not just this
-		    # search region
-		    $SourceAminoRanges[$HitSourceIDs[$match_id]] =~ /^(\d+)\.\./;
-		    my $global_amino_range_start = $1;
-		    $HitSourceStarts[$match_id] += $global_amino_range_start;
-		    $HitSourceEnds[$match_id]   += $global_amino_range_start;
-
-
 		}
 		
 		
@@ -2954,6 +2944,9 @@ sub RecordGhostMSAs
 
 		    my $source_chr = $1;
 
+		    my $source_revcomp = 0;
+		    $source_revcomp = 1 if ($source_revcomp =~ /\[revcomp\]/);
+
 		    $line = <$MapCoordFile>;
 		    $line =~ /Num Exons\s+\:\s+(\d+)/;
 
@@ -2979,15 +2972,18 @@ sub RecordGhostMSAs
 			
 			# We're in the key region!
 			my $exon_map_range = $SourceExonCoords[$exon_index];
+			if ($source_revcomp) { $exon_map_range++; }
+			else                 { $exon_map_range--; }
 
 			while ($protein_index <= $source_end && $exon_index < scalar(@SourceExonCoords)) {
 			    $protein_index++;
 			    $exon_index++;
 			}
 
-			# Not really interested in 'x..x'
-			if ($exon_map_range != $SourceExonCoords[$exon_index-1]) {
-			    $exon_map_range = $exon_map_range.'..'.$SourceExonCoords[$exon_index-1];
+			if ($source_revcomp) {
+			    $exon_map_range = $exon_map_range.'..'.($SourceExonCoords[$exon_index-1]-1);
+			} else {
+			    $exon_map_range = $exon_map_range.'..'.($SourceExonCoords[$exon_index-1]+1);
 			}
 
 			push(@SourceMapRanges,$exon_map_range);
@@ -4342,7 +4338,7 @@ sub RecordHitsByPctID
 
 		}
 		
-		if ($line =~ /\: (\S+) \/ aminos (\d+)\.\.(\d+) \/ (\S+)\% ali/) {
+		if ($line =~ /\: (\S+) \/ aminos (\d+)\.\.(\d+) \S+ \/ (\S+)\% ali/) {
 		    
 		    my $source_species = $1;
 		    my $ali_len = $3 - $2 + 1;
