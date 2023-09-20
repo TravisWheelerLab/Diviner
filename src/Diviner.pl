@@ -2980,7 +2980,7 @@ sub RecordGhostMSAs
 		    else                 { $lift_str = $FullCoordList[$source_start-1]-1; }
 
 		    for (my $coord_list_pos=$source_start-1; $coord_list_pos<$source_end-1; $coord_list_pos++) {
-			if (abs($FullCoordList[$coord_list_pos+1] - $FullCoordList[$coord_list_pos])) {
+			if (abs($FullCoordList[$coord_list_pos+1] - $FullCoordList[$coord_list_pos]) > 3) {
 
 			    my $exon_end_coord   = $FullCoordList[$coord_list_pos];
 			    my $exon_start_coord = $FullCoordList[$coord_list_pos+1];
