@@ -2961,53 +2961,42 @@ sub RecordGhostMSAs
 
 		    my $source_num_exons = $1;
 
-		    my $protein_index = 1;
+		    my @FullCoordList;
 		    for (my $exon_id=0; $exon_id<$source_num_exons; $exon_id++) {
 
 			$line = <$MapCoordFile>; # Exon meta
 			$line = <$MapCoordFile>; # Exon coord.s
 
 			$line =~ s/\n|\r//g;
-			my @SourceExonCoords = split(/\,/,$line);
 
-			my $exon_index = 0;
-			while ($protein_index < $source_start && $exon_index < scalar(@SourceExonCoords)) {
-			    $protein_index++;
-			    $exon_index++;
+			foreach my $coord (split(/\,/,$line)) {
+			    push(@FullCoordList,$coord);
 			}
-
-			# Did we exhaust this exon?
-			next if ($exon_index == scalar(@SourceExonCoords));
-			
-			# We're in the key region!
-			my $exon_map_range = $SourceExonCoords[$exon_index];
-			if ($source_revcomp) { $exon_map_range++; }
-			else                 { $exon_map_range--; }
-
-			while ($protein_index <= $source_end && $exon_index < scalar(@SourceExonCoords)) {
-			    $protein_index++;
-			    $exon_index++;
-			}
-
-			if ($source_revcomp) {
-			    $exon_map_range = $exon_map_range.'..'.($SourceExonCoords[$exon_index-1]-1);
-			} else {
-			    $exon_map_range = $exon_map_range.'..'.($SourceExonCoords[$exon_index-1]+1);
-			}
-
-			push(@SourceMapRanges,$exon_map_range);
-
-			# If we're done, we're done, baby!
-			last if ($protein_index >= $source_end);
 			
 		    }
 
-		    my $source_map_str = $source_chr.':'.$SourceMapRanges[0];
-		    for (my $smr_id=1; $smr_id<scalar(@SourceMapRanges); $smr_id++) {
-			$source_map_str = $source_map_str.'/'.$SourceMapRanges[$smr_id];
+		    my $lift_str;
+		    if ($source_revcomp) { $lift_str = $FullCoordList[$source_start-1]+1; }
+		    else                 { $lift_str = $FullCoordList[$source_start-1]-1; }
+
+		    for (my $coord_list_pos=$source_start-1; $coord_list_pos<$source_end-1; $coord_list_pos++) {
+			if (abs($FullCoordList[$coord_list_pos+1] - $FullCoordList[$coord_list_pos])) {
+
+			    my $exon_end_coord   = $FullCoordList[$coord_list_pos];
+			    my $exon_start_coord = $FullCoordList[$coord_list_pos+1];
+			    
+			    if ($source_revcomp) { $exon_end_coord--; $exon_start_coord++; }
+			    else                 { $exon_end_coord++; $exon_start_coord--; }
+			    
+			    $lift_str = $lift_str.'..'.$exon_end_coord.'/'.$exon_start_coord;
+			    
+			}
 		    }
 
-		    $SourceLiftStrs[$match_id] = $source_map_str;
+		    if ($source_revcomp) { $lift_str = $lift_str.'..'.($FullCoordList[$source_end-1]-1); }
+		    else                 { $lift_str = $lift_str.'..'.($FullCoordList[$source_end-1]+1); }
+
+		    $SourceLiftStrs[$match_id] = $source_chr.':'.$lift_str;
 
 		}
 		close($MapCoordFile);
@@ -3242,11 +3231,10 @@ sub RecordGhostMSAs
 		# Metadata item 3: Specific source sequence info.
 		for (my $i=0; $i<$num_matched; $i++) {
 		    $source_id = $HitSourceIDs[$i];
-		    $meta_str  = $meta_str."         : $SourceSpecies[$source_id]";
-		    $meta_str  = $meta_str." / aminos $ ";
-		    $meta_str  = $meta_str." ($SourceLiftStrs[$i])";
-		    $meta_str  = $meta_str." / $SourcePctsID[$i]";
-		    $meta_str  = $meta_str."\n";
+		    $meta_str  = $meta_str."         : $SourceSpecies[$source_id] / ";
+		    $meta_str  = $meta_str."aminos $HitSourceStarts[$i]..$HitSourceEnds[$i] ";
+		    $meta_str  = $meta_str."($SourceLiftStrs[$i]) ";
+		    $meta_str  = $meta_str."/ $SourcePctsID[$i]\n";
 		}
 		
 		
