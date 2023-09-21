@@ -1919,7 +1919,7 @@ sub FindGhostExons
 
 	    # What aminos (within the species sequence) were part of this hit?
 	    $SearchAminoRanges[$q] =~ /(\d+)\.\./;
-	    my $hit_amino_start = $1 + $HitAminoStarts[$hit];
+	    my $hit_amino_start = $HitAminoStarts[$hit];
 	    my $hit_amino_end   = $hit_amino_start + ($HitAminoEnds[$hit] - $HitAminoStarts[$hit]);
 	    
 	    print $outf "    + Aminos $hit_amino_start..$hit_amino_end ";
@@ -2494,7 +2494,7 @@ sub RecordGhostMSAs
 	my $outfname = $gene_ali_dir.$target_species.'.MSAs.out';
 	my $outf = OpenOutputFile($outfname);
 	for (my $i=0; $i<$num_exons; $i++) {
-
+	    
 	    # Start off by getting access to the specific source species matches
 	    my @SourceAminoRanges;
 	    my @SourceSpecies;
@@ -2509,7 +2509,6 @@ sub RecordGhostMSAs
 		push(@SourceSeqs,$2);
 		push(@SourceAminoRanges,$3);
 		my $hit_exon_range = $4;
-
 
                 my $hit_msa_start_exon;
                 my $hit_msa_end_exon;
