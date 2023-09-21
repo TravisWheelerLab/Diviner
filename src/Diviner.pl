@@ -2354,10 +2354,14 @@ sub RecordGhostMSAs
 
 	    $line = <$inf>;
 
-	    $line =~ /Aminos (\d+)\./;
+	    $line =~ /Aminos (\d+)\.\.(\d+)/;
 	    my $start_amino_coord = $1;
+	    my $end_amino_coord = $2;
 	    if (!$wide_amino_start || $start_amino_coord < $wide_amino_start) {
 		$wide_amino_start = $start_amino_coord;
+	    }
+	    if (!$wide_amino_end || $end_amino_coord > $wide_amino_end) {
+		$wide_amino_end = $end_amino_coord;
 	    }
 
 	    $line =~ /\:(\d+)\.\.(\d+)/;
@@ -2388,13 +2392,12 @@ sub RecordGhostMSAs
 	}
 
 	# What is the actual amino range (w.r.t. this species' "exome" for the gene)?
-	if ($source_seq =~ /^([a-z]+)[A-Z]/) {
-	    my $offset = length($1);
-	    $wide_amino_start -= $offset;
-	}
-	$wide_amino_end = $wide_amino_start + length($source_seq) - 1;
+	#if ($source_seq =~ /^([a-z]+)[A-Z]/) {
+	#my $offset = length($1);
+	#$wide_amino_start -= $offset;
+	#}
+	#$wide_amino_end = $wide_amino_start + length($source_seq) - 1;
 
-	# For simplification
 	my $wide_amino_range = $wide_amino_start.'..'.$wide_amino_end;
 	my $wide_nucl_range = $wide_nucl_start.'..'.$wide_nucl_end;
 
