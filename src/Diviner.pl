@@ -2610,7 +2610,10 @@ sub RecordGhostMSAs
 			= GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
 
 		    next if (!$num_alis);
-		    
+
+		    # NOTE: The "Ranges" here are w.r.t. the sequence implicated
+		    #       in the hit (not the actual amino acid coordinates in the
+		    #       full sequence)
 		    my @ScoreDensities = @{$score_densities_ref};
 		    my @TargetRanges = @{$target_ranges_ref};
 		    my @SourceRanges = @{$source_ranges_ref};
@@ -2715,6 +2718,8 @@ sub RecordGhostMSAs
 
 		    $AllHits[$HitIDs[$match_id]] =~ /\/(\d+)\.\.(\d+)\/(\d+)$/;
 
+		    # NOTE: These "Ranges" are w.r.t the sequence implicated in the
+		    #       hit, not the actual amino acid coordinates
 		    $HitSourceStarts[$match_id] = $1;
 		    $HitSourceEnds[$match_id] = $2;
 		    $HitSourceIDs[$match_id] = $3;
@@ -2778,7 +2783,15 @@ sub RecordGhostMSAs
 		my $start_col = 0;
 		my $end_col = $amino_msa_len-1;
 		
-		
+		# As we trim, we want to be sure to capture how many characters get
+		# removed from each of our source sequences
+		my @SourceStartOffsets;
+		my @SourceEndOffsets;
+		for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+		    $SourceStartOffsets[$match_id] = 0;
+		    $SourceEndOffsets[$match_id]   = 0;
+		}
+
 		# 1. Checking the left side
 		#
 		while ($start_col<$amino_msa_len) {
@@ -2788,15 +2801,24 @@ sub RecordGhostMSAs
 		    my $target_char = $Col[0];
 		    
 		    if ($target_char !~ /[A-Z]/) {
+
 			$start_col++;
 			if ($revcomp) { $true_nucl_start -= 3; }
 			else          { $true_nucl_start += 3; }
+
+			for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+			    if ($Col[$match_id+1] =~ /[A-Za-z]/) {
+				$SourceStartOffsets[$match_id]++;
+			    }
+			}
+			
 			next;
+
 		    }
 		    
 		    my $trim_it = 1;
-		    for (my $i=1; $i<=$num_matched; $i++) {
-			if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
+		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+			if ($Col[$match_id+1] ne '-' && uc($Col[$match_id+1]) eq $target_char) {
 			    $trim_it = 0;
 			    last;
 			}
@@ -2806,6 +2828,12 @@ sub RecordGhostMSAs
 		    $start_col++;
 		    if ($revcomp) { $true_nucl_start -= 3; }
 		    else          { $true_nucl_start += 3; }
+		    
+		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+			if ($Col[$match_id+1] =~ /[A-Za-z]/) {
+			    $SourceStartOffsets[$match_id]++;
+			}
+		    }
 		    
 		}
 		
@@ -2819,15 +2847,24 @@ sub RecordGhostMSAs
 		    my $target_char = $Col[0];
 		    
 		    if ($target_char !~ /[A-Z]/) {
+
 			$end_col--;
 			if ($revcomp) { $true_nucl_end += 3; }
 			else          { $true_nucl_end -= 3; }
+
+			for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+			    if ($Col[$match_id+1] =~ /[A-Za-z]/) {
+				$SourceEndOffsets[$match_id]++;
+			    }
+			}
+			
 			next;
+
 		    }
 		    
 		    my $trim_it = 1;
-		    for (my $i=1; $i<=$num_matched; $i++) {
-			if ($Col[$i] ne '-' && uc($Col[$i]) eq $target_char) {
+		    for (my $match_id=0; $match_id<$num_matched; $i++) {
+			if ($Col[$match_id+1] ne '-' && uc($Col[$match_id+1]) eq $target_char) {
 			    $trim_it = 0;
 			    last;
 			}
@@ -2838,18 +2875,21 @@ sub RecordGhostMSAs
 		    if ($revcomp) { $true_nucl_end += 3; }
 		    else          { $true_nucl_end -= 3; }
 		    
+		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
+			if ($Col[$match_id+1] =~ /[A-Za-z]/) {
+			    $SourceEndOffsets[$match_id]++;
+			}
+		    }
+		    
 		}
 		
 		
-		# As an additional lil' bit o' cleanup, we'll trim off any
-		# extra leading gaps from source sequences and adjust their
-		# true start / end amino coordinates
-		my @SourceStartOffsets;
-		my @SourceEndOffsets;
+		# 3. As an additional lil' bit o' cleanup, we'll go through each
+		#    source sequence individually and trim off any extra leading gaps
+		#
 		for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 		    
 		    my $row_id = $match_id+1;
-		    
 
 		    # Start offset
 		    my $col_id = $start_col;
@@ -2868,7 +2908,7 @@ sub RecordGhostMSAs
 			
 		    }
 		    
-		    $SourceStartOffsets[$match_id] = $offset;
+		    $SourceStartOffsets[$match_id] += $offset;
 
 
 		    # End offset
@@ -2888,7 +2928,7 @@ sub RecordGhostMSAs
 			
 		    }
 		    
-		    $SourceEndOffsets[$match_id] = $offset;
+		    $SourceEndOffsets[$match_id] += $offset;
 		   
 
 		    # Let the record show that the ends are offset!
