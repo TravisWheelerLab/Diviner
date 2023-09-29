@@ -2863,7 +2863,7 @@ sub RecordGhostMSAs
 		    }
 		    
 		    my $trim_it = 1;
-		    for (my $match_id=0; $match_id<$num_matched; $i++) {
+		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 			if ($Col[$match_id+1] ne '-' && uc($Col[$match_id+1]) eq $target_char) {
 			    $trim_it = 0;
 			    last;
