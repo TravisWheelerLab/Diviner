@@ -3006,7 +3006,7 @@ sub RecordGhostMSAs
 
 			# Oh, we're in the right ballpark, baby!
 			$coord_list_str =~ s/\n|\r//g;
-			my @ExonNuclCoords = split(/\,/,$line);
+			my @ExonNuclCoords = split(/\,/,$coord_list_str);
 
 			
 			# Start with the start
