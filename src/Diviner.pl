@@ -2989,22 +2989,26 @@ sub RecordGhostMSAs
 		    my $lift_str = '';
 		    for (my $exon_id=0; $exon_id<$source_num_exons; $exon_id++) {
 
+			
 			my $exon_metadata  = <$MapCoordFile>;
 			my $coord_list_str = <$MapCoordFile>;
 
-			$exon_metadata =~ /Aminos (\d+)\.\.(\d+)\, \S+\:(\d+)\.\.(\d+)/;
+			$exon_metadata =~ /Aminos (\d+)\.\.(\d+)\, \S+\:(\d+)\.\.(\d+)\s*$/;
 			my $exon_start_amino = $1;
 			my $exon_end_amino   = $2;
 			my $exon_start_nucl  = $3;
 			my $exon_end_nucl    = $4;
 
+			
 			# Are we even in the right ballpark?
 			next if ($exon_end_amino < $source_start);
+
 
 			# Oh, we're in the right ballpark, baby!
 			$coord_list_str =~ s/\n|\r//g;
 			my @ExonNuclCoords = split(/\,/,$line);
 
+			
 			# Start with the start
 			if ($exon_start_amino >= $source_start) {
 
@@ -3021,6 +3025,7 @@ sub RecordGhostMSAs
 
 			}
 
+			
 			# End with the end
 			if ($exon_end_amino <= $source_end) {
 
@@ -3028,7 +3033,7 @@ sub RecordGhostMSAs
 			    
 			} else {
 
-			    my $nucl_coord = $ExonNuclCoords[$source_end - $exon_end_amino];
+			    my $nucl_coord = $ExonNuclCoords[$source_end - $exon_start_amino];
 
 			    if ($source_revcomp) { $nucl_coord--; }
 			    else                 { $nucl_coord++; }
@@ -3037,8 +3042,10 @@ sub RecordGhostMSAs
 
 			}
 
+			
 			# Have we finished the job?
 			last if ($exon_end_amino >= $source_end);
+
 			
 		    }
 
