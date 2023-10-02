@@ -2986,41 +2986,64 @@ sub RecordGhostMSAs
 
 		    my $source_num_exons = $1;
 
-		    my @FullCoordList;
+		    my $lift_str = '';
 		    for (my $exon_id=0; $exon_id<$source_num_exons; $exon_id++) {
 
-			$line = <$MapCoordFile>; # Exon meta
-			$line = <$MapCoordFile>; # Exon coord.s
+			my $exon_metadata  = <$MapCoordFile>;
+			my $coord_list_str = <$MapCoordFile>;
 
-			$line =~ s/\n|\r//g;
+			$exon_metadata =~ /Aminos (\d+)\.\.(\d+)\, \S+\:(\d+)\.\.(\d+)/;
+			my $exon_start_amino = $1;
+			my $exon_end_amino   = $2;
+			my $exon_start_nucl  = $3;
+			my $exon_end_nucl    = $4;
 
-			foreach my $coord (split(/\,/,$line)) {
-			    push(@FullCoordList,$coord);
+			# Are we even in the right ballpark?
+			next if ($exon_end_amino < $source_start);
+
+			# Oh, we're in the right ballpark, baby!
+			$coord_list_str =~ s/\n|\r//g;
+			my @ExonNuclCoords = split(/\,/,$line);
+
+			# Start with the start
+			if ($exon_start_amino >= $source_start) {
+
+			    $lift_str = $lift_str.'/'.$exon_start_nucl;
+			    
+			} else {
+
+			    my $nucl_coord = $ExonNuclCoords[$source_start - $exon_start_amino];
+
+			    if ($source_revcomp) { $nucl_coord++; }
+			    else                 { $nucl_coord--; }
+
+			    $lift_str = $lift_str.'/'.$nucl_coord;
+
 			}
+
+			# End with the end
+			if ($exon_end_amino <= $source_end) {
+
+			    $lift_str = $lift_str.'..'.$exon_end_nucl;
+			    
+			} else {
+
+			    my $nucl_coord = $ExonNuclCoords[$source_end - $exon_end_amino];
+
+			    if ($source_revcomp) { $nucl_coord--; }
+			    else                 { $nucl_coord++; }
+
+			    $lift_str = $lift_str.'..'.$nucl_coord;
+
+			}
+
+			# Have we finished the job?
+			last if ($exon_end_amino >= $source_end);
 			
 		    }
 
-		    my $lift_str;
-		    if ($source_revcomp) { $lift_str = $FullCoordList[$source_start-1]+1; }
-		    else                 { $lift_str = $FullCoordList[$source_start-1]-1; }
-
-		    for (my $coord_list_pos=$source_start-1; $coord_list_pos<$source_end-1; $coord_list_pos++) {
-			if (abs($FullCoordList[$coord_list_pos+1] - $FullCoordList[$coord_list_pos]) > 3) {
-
-			    my $exon_end_coord   = $FullCoordList[$coord_list_pos];
-			    my $exon_start_coord = $FullCoordList[$coord_list_pos+1];
-			    
-			    if ($source_revcomp) { $exon_end_coord--; $exon_start_coord++; }
-			    else                 { $exon_end_coord++; $exon_start_coord--; }
-			    
-			    $lift_str = $lift_str.'..'.$exon_end_coord.'/'.$exon_start_coord;
-			    
-			}
-		    }
-
-		    if ($source_revcomp) { $lift_str = $lift_str.'..'.($FullCoordList[$source_end-1]-1); }
-		    else                 { $lift_str = $lift_str.'..'.($FullCoordList[$source_end-1]+1); }
-
+		    $lift_str =~ s/^\///;
+		    
 		    $SourceLiftStrs[$match_id] = $source_chr.':'.$lift_str;
 
 		}
