@@ -3143,10 +3143,8 @@ sub RecordGhostMSAs
 			# Periods for matches, lowercase for mismatches
 			if ($Col[$i+1] =~ /[A-Z]/ && $Col[$i+1] eq $Col[0]) {
 			    $MSA[$i+2][$msa_len+1] = '.';
-			    $SourceNumMatches[$i]++;
 			} else {
 			    $MSA[$i+2][$msa_len+1] = lc($Col[$i+1]);
-			    $SourceNumMismatches[$i]++;
 			}
 			
 			$MSA[$i+2][$msa_len+2] = ' ';
@@ -3156,12 +3154,6 @@ sub RecordGhostMSAs
 		    # PROGRESS!
 		    $msa_len += 3;
 		    
-		}
-		
-		# We want to correct for any columns that weren't included on account
-		# of being 'offset' columns on the ends of the alignment
-		for (my $i=0; $i<$num_matched; $i++) {
-		    $SourceNumMismatches[$i] -= $SourceStartOffsets[$i] + $SourceEndOffsets[$i];
 		}
 		
 		# 3. The lead-out nucleotides
