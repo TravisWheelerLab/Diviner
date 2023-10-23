@@ -3111,14 +3111,6 @@ sub RecordGhostMSAs
 		}
 		
 		# 2. The amino MSA
-		#    (Where we absolutely want to record %ID-able info)
-		my @SourceNumMatches;
-		my @SourceNumMismatches;
-		for (my $i=0; $i<$num_matched; $i++) {
-		    $SourceNumMatches[$i] = 0;
-		    $SourceNumMismatches[$i] = 0;
-		}
-		
 		for (my $col_id=$start_col; $col_id<=$end_col; $col_id++) {
 		    
 		    my @Col = split(//,$AminoMSA[$col_id]);
@@ -3151,10 +3143,8 @@ sub RecordGhostMSAs
 			# Periods for matches, lowercase for mismatches
 			if ($Col[$i+1] =~ /[A-Z]/ && $Col[$i+1] eq $Col[0]) {
 			    $MSA[$i+2][$msa_len+1] = '.';
-			    $SourceNumMatches[$i]++;
 			} else {
 			    $MSA[$i+2][$msa_len+1] = lc($Col[$i+1]);
-			    $SourceNumMismatches[$i]++;
 			}
 			
 			$MSA[$i+2][$msa_len+2] = ' ';
@@ -3164,12 +3154,6 @@ sub RecordGhostMSAs
 		    # PROGRESS!
 		    $msa_len += 3;
 		    
-		}
-		
-		# We want to correct for any columns that weren't included on account
-		# of being 'offset' columns on the ends of the alignment
-		for (my $i=0; $i<$num_matched; $i++) {
-		    $SourceNumMismatches[$i] -= $SourceStartOffsets[$i] + $SourceEndOffsets[$i];
 		}
 		
 		# 3. The lead-out nucleotides
@@ -3212,7 +3196,19 @@ sub RecordGhostMSAs
 			$FormattedNames[$i+2] = ' '.$FormattedNames[$i+2];
 		    }
 		}
+
 		
+		# Now that we've made all of our final adjustments, let's
+		# record the number of matches and mismatches for each
+		# source sequence (for percent id calculation)
+		my @SourceNumMatches;
+		my @SourceNumMismatches;
+		for (my $i=0; $i<$num_matched; $i++) {
+		    $SourceNumMatches[$i] = 0;
+		    $SourceNumMismatches[$i] = 0;
+		}
+		
+
 		# Buffer in the alignment string and let 'er rip!
 		my $ali_str = "\n\n";
 		my $chars_per_line = 60;
@@ -3227,7 +3223,18 @@ sub RecordGhostMSAs
 			
 			my $pos = $msa_pos;
 			while ($pos < $next_stop) {
+
+			    # Percent ID stuff (only for source seq.s)
+			    if ($i>1 && $MSA[$i][$pos] =~ /\S/) {
+				if ($MSA[$i][$pos] eq '.') {
+				    $SourceNumMatches[$i-2]++;
+				} else {
+				    $SourceNumMismatches[$i-2]++;
+				}
+			    }
+			    
 			    $ali_str = $ali_str.$MSA[$i][$pos++];
+
 			}
 			$ali_str = $ali_str."\n";
 			
@@ -3239,6 +3246,7 @@ sub RecordGhostMSAs
 		    
 		}
 		$ali_str = $ali_str."\n";
+
 		
 		# Before we spit out our alignment string, we'll also make a string with
 		# hit metadata.
