@@ -3847,15 +3847,12 @@ sub GetMapSummaryStats
 		my $hash_val = $target_species.'|'.$target_region.'|'.$source_species;
 		$hash_val = $hash_val.'|'.$search_seq_len.'|'.$pct_seq_mapped;
 		
-		# Add the list of hit regions to 
+		# Add the list of hit regions, too
 		for (my $i=0; $i<$num_hits; $i++) {
 		    $line = <$inf>;
 		    $line =~ /mapped to \S+ \S+\:(\d+\.\.\d+)/;
 		    my $map_range = $1;
-		    $line = <$inf>;
-		    my $known_exon_overlap = 1;
-		    $known_exon_overlap = 0 if ($line =~ /\+ No observed overlap/);
-		    $hash_val = $hash_val.'|'.$map_range.'/'.$known_exon_overlap;
+		    $hash_val = $hash_val.'|'.$map_range;
 		}
 		
 		if ($MapsByExonRange{$exon_range}) {
@@ -3947,60 +3944,6 @@ sub GetMapSummaryStats
 		print $outf "s" if ($num_maps_to_species > 1);
 		print $outf " to target species $target_species ($target_species_region)\n";
 		
-		# We'll want to record all of the genomic coordinate ranges that we hit
-		# to so that we can infer the number of putative exons suggested by the
-		# sum of mappings.
-		my @RangeList;
-		my @KnownExon;
-		
-		foreach my $map_to_species (@MapsToSpecies) {
-		    
-		    # Recover the details of our mapping
-		    my @MappingDetails = split(/\|/,$map_to_species);
-		    my $source_species = $MappingDetails[2];
-		    my $search_seq_len = $MappingDetails[3];
-		    my $pct_seq_mapped = $MappingDetails[4];
-		    
-		    # Pull in all of the genomic ranges we mapped to
-		    for (my $i=5; $i<scalar(@MappingDetails); $i++) {
-			$MappingDetails[$i] =~ /^([^\/]+)\/(\d)$/;
-			push(@RangeList,$1);
-			push(@KnownExon,$2);
-		    }
-		    
-		    # Yell about 'em!
-		    print $outf "          + $source_species:";
-		    print $outf " $pct_seq_mapped\% of $search_seq_len-amino search sequence mapped\n";
-		    
-		}
-		
-		# Before we move along, we'll use the genomic coordinates to determine
-		# how many distinct putative exons are suggested by our data
-		my ($num_suggested_exons,$num_annotated_exons)
-		    = CollapseAndCountOverlaps(\@RangeList,\@KnownExon);
-		print $outf "          = $num_suggested_exons unique exon";
-		print $outf "s" if ($num_suggested_exons > 1);
-		print $outf " suggested ($num_annotated_exons ";
-		if ($num_annotated_exons == 1) { print $outf "has";  }
-		else                           { print $outf "have"; }
-		print $outf " GTF annotations)\n";
-
-		if ($TargetSpeciesToSuggested{$target_species}) {
-		    $TargetSpeciesToSuggested{$target_species} += $num_suggested_exons;
-		} else {
-		    $TargetSpeciesToSuggested{$target_species}  = $num_suggested_exons;
-		}
-
-		if ($TargetSpeciesToAnnotated{$target_species}) {
-		    $TargetSpeciesToAnnotated{$target_species} += $num_annotated_exons;
-		} else {
-		    $TargetSpeciesToAnnotated{$target_species}  = $num_annotated_exons;
-		}
-
-		# Finally, record this gene's hit ratio
-		my $hit_info = $target_species.'|'.$gene.'|'.$num_suggested_exons.'|'.$num_annotated_exons;
-		push(@FullHitList,$hit_info);
-		
 	    }
 	    
 	}
@@ -4009,74 +3952,6 @@ sub GetMapSummaryStats
 
     close($outf);
 
-    # Now we'll run through each of our target species and give a little bit of info.
-    my $overviews_dirname = CreateDirectory($outdirname.'Hit-Overviews-by-Species');
-    foreach my $species (keys %TargetSpeciesToSuggested) {
-
-	$outf = OpenOutputFile($overviews_dirname.$species.'.overview.out');
-
-	my $num_suggested_exons = $TargetSpeciesToSuggested{$species};
-	my $num_annotated_exons = 0;
-	$num_annotated_exons = $TargetSpeciesToAnnotated{$species};
-
-	print $outf "Species: $species\n";
-	print $outf "Total tblastn-suggested Exons: $num_suggested_exons\n";
-	print $outf "Number of GTF-annotated Exons: $num_annotated_exons\n";
-	print $outf "\n";
-
-	# To properly format our output, we're going to need to know the
-	# longest gene name...
-	my $longest_gene_name = 4; # 'Gene'
-	foreach my $hit (@FullHitList) {
-
-	    my @HitData = split(/\|/,$hit);
-	    next if ($HitData[0] ne $species);
-
-	    if (length($HitData[1]) > $longest_gene_name) {
-		$longest_gene_name = length($HitData[1]);
-	    }
-
-	}
-
-	my $fmted_header_1 = 'Gene';
-	my $fmted_header_2 = '----';
-	while (length($fmted_header_1) < $longest_gene_name) {
-	    $fmted_header_1 = $fmted_header_1.' ';
-	    $fmted_header_2 = $fmted_header_2.'-';
-	}
-	print $outf "$fmted_header_1  # Suggested  # Annotated\n";
-	print $outf "$fmted_header_2  -----------  -----------\n";
-
-	foreach my $hit (@FullHitList) {
-
-	    my @HitData = split(/\|/,$hit);
-	    next if ($HitData[0] ne $species);
-
-	    my $field_1 = $HitData[1];
-	    while (length($field_1) < $longest_gene_name) {
-		$field_1 = $field_1.' ';
-	    }
-
-	    my $field_2 = $HitData[2];
-	    while (length($field_2) < length('# Suggested')) {
-		$field_2 = ' '.$field_2;
-	    }
-
-	    my $field_3 = $HitData[3];
-	    while (length($field_3) < length('# Annotated')) {
-		$field_3 = ' '.$field_3;
-	    }
-
-	    print $outf "$field_1  $field_2  $field_3\n";
-	    
-	}
-
-	print $outf "\n";
-
-	close($outf);
-	
-    }
-    
 }
 
 
@@ -4204,6 +4079,15 @@ sub CheckNovelty
 		$hit_start = $hit_end;
 		$hit_end = $tmp;
 	    }
+
+	    # DEBUGGING
+	    print "\n\n";
+	    print "   GTF:  $line";
+	    print "      '-> Chromosome: $gtf_chr($gtf_strand) $gtf_start..$gtf_end\n\n";
+	    print "   Div:  $ThreadHitNumToFileAndData[$thread_hit_id]\n";
+	    print "      '-> $hit_start..$hit_end";
+	    die   "\n\n";
+	    # DEBUGGING
 
 	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
 		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
