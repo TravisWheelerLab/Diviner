@@ -2320,7 +2320,7 @@ sub RecordGhostMSAs
             my $msa_end_exon = -1;
 	    foreach my $hit (split(/\&/,$ExonHits[$i])) {
 		
-		$hit =~ /^[^\|]+\|([^\:]+)\:([^\:]+)\:([^\:]+)\:([^\|]+)\|/;
+		$hit =~ /^[^\|]+\|([^\:]+)\:([^\:]+)\:([^\:]+)\:([^\:]+)$/;
 		push(@SourceSpecies,$1);
 		push(@SourceSeqs,$2);
 		push(@SourceAminoRanges,$3);
