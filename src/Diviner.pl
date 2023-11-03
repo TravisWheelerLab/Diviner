@@ -16,7 +16,6 @@ use DisplayProgress;
 sub PrintUsage;
 sub DetailedUsage;
 sub ParseArgs;
-sub ParseGTF;
 sub GetMappedSeqMSA;
 sub ParseAFA;
 sub RecordSplicedMSA;
@@ -32,6 +31,8 @@ sub GetB62Score;
 sub MultiAminoSeqAli;
 sub GetMapSummaryStats;
 sub CollapseAndCountOverlaps;
+sub CheckNovelty;
+sub RecordNovelty;
 sub RecordHitsByPctID;
 
 
@@ -137,9 +138,7 @@ ReportProgress('startup');
 
 my $SpeciesGuide = OpenInputFile($ARGV[1]);
 my %SpeciesToGenomes;
-my %SpeciesHasGTF;
-my %GTFStartsToEnds;
-my %GTFEndsToStarts;
+my %SpeciesToGTF;
 my %ChrLensBySpecies;
 while (my $line = <$SpeciesGuide>) {
 
@@ -179,8 +178,8 @@ while (my $line = <$SpeciesGuide>) {
     # any ghost exons we hit on are known coding regions (and not just
     # members of proteoforms that are missing from our database).
     if (-e $gtf) {
-	$SpeciesHasGTF{$species} = 1;
-	ParseGTF($species,$gtf);
+	$SpeciesToGTF{$species} = $gtf;
+	#ParseGTF($species,$gtf);
     }
     
 }
@@ -243,6 +242,14 @@ my $prot_seq_fname = $outgenesdir.'prot.tmp'.$threadID.'.fa';
 my $tbn_out_fname  = $outgenesdir.'tbn.tmp'.$threadID.'.out';
 $tblastn = $tblastn.' -subject '.$nucl_seq_fname.' -query '.$prot_seq_fname;
 $tblastn = $tblastn.' -out '.$tbn_out_fname.' 1>/dev/null 2>&1';
+
+
+# These are going to be what we use to capture whether a hit is novel
+# (and trace that info. back to the corresponding file)
+my %SpeciesChrMbRangeToHits;
+my @ThreadHitNumToFileAndData;
+my @ThreadHitNumToNovelty;
+my $num_thread_hits = 0;
 
 
 # TIME FOR THE MAIN EVENT!
@@ -309,13 +316,21 @@ for (my $gene_id=$start_gene_id; $gene_id<$end_gene_id; $gene_id++) {
     # GTFs to examine... yay?
     next if (!$num_ghosts_busted);
 
+    # Time to build some gorgeous translated MSAs!
+    RecordGhostMSAs($gene);
+
     # Eeek! Ghosts!
     push(@GhostlyGenes,$gene);
 
-    # Time to build some gorgeous translated MSAs!
-    RecordGhostMSAs($gene);
-    
 }
+
+
+# Figure out which of our hits don't overlap with an 'exon' or 'cds' GTF entry
+foreach my $species (keys %SpeciesToGTF) {
+    CheckNovelty($species,$SpeciesToGTF{$species});
+}
+RecordNovelty();
+
 
 # How'd I do?  I don't even know!
 if ($threadID) {
@@ -329,14 +344,17 @@ if ($threadID) {
     close($final_outf);
 }
 
+
 # The age of threads is coming to a close!
 if ($threadID) {
     exit(0);
 }
 while (wait() != -1) {}
 
+
 # Let the user know they're in the home-stretch!
 ReportProgress('final');
+
 
 # Woo-hoo!  Janitorial work is my favorite!
 for ($threadID=0; $threadID<$num_cpus; $threadID++) {
@@ -502,68 +520,6 @@ sub ParseArgs
     return \%Options;
     
 }
-
-
-
-
-
-###############################################################
-#
-#  Function: ParseGTF
-#
-sub ParseGTF
-{
-    my $species = shift;
-    my $gtf_fname = shift;
-
-    my $gtf = OpenInputFile($gtf_fname);
-    while (my $line = <$gtf>) {
-
-	my $entry_type = '';
-        if ($line =~ /^\S+\s+\S+\s+(\S+)/) {
-            $entry_type = lc($1);
-        }
-        
-        if ($line =~ /^\#/ || ($entry_type ne 'exon' && $entry_type ne 'cds')) {
-            next;
-        }
-
-        # Note that startPos is always less than endPos, even when we're
-        # indexing into the reverse complement.
-        $line =~ /^(\S+)\s+\S+\s+\S+\s+(\d+)\s+(\d+)\s+\S+\s+([\+\-])/;
-        my $chr     = $1;
-        my $start   = $2;
-        my $end     = $3;
-        my $revcomp = $4;
-
-	if ($revcomp eq '-') {
-	    $chr = $chr.'[revcomp]';
-	    my $temp = $start;
-	    $start = $end;
-	    $end = $temp;
-	}
-
-	my $key1 = $species.'|'.$chr.'|'.$start;
-	my $key2 = $species.'|'.$chr.'|'.$end;
-
-	# NOTE: This hash is declared top-level of script
-	if ($GTFStartsToEnds{$key1}) {
-	    $GTFStartsToEnds{$key1} = $GTFStartsToEnds{$key1}.'|'.$end;
-	} else {
-	    $GTFStartsToEnds{$key1} = $end;
-	}
-
-	if ($GTFEndsToStarts{$key2}) {
-	    $GTFEndsToStarts{$key2} = $GTFEndsToStarts{$key2}.'|'.$start;
-	} else {
-	    $GTFEndsToStarts{$key2} = $start;
-	}
-	
-    }
-    close($gtf);
-
-}
-
 
 
 
@@ -1926,139 +1882,6 @@ sub FindGhostExons
 	    print $outf "mapped to $target_species $chr:$HitNuclStarts[$hit]..$HitNuclEnds[$hit] ";
 	    print $outf "($HitEVals[$hit])\n";
 
-	    # Does this hit overlap with a known (GTF-recorded) coding region?
-	    my $start_nucl = $HitNuclStarts[$hit];
-	    my $end_nucl = $HitNuclEnds[$hit];
-
-	    my $keybase = $target_species.'|'.$chr.'|';
-	    my $gtf_overlap = 0;
-
-	    my $increment = 1;
-	    $increment = -1 if ($revcomp);
-	    for (my $i=$start_nucl; $i<=$end_nucl; $i+=$increment) {
-
-		my $key = $keybase.$i;
-
-		if ($GTFStartsToEnds{$key}) {
-
-		    my @EndList;
-		    if ($revcomp) {
-			@EndList = sort { $a <=> $b } split(/\|/,$GTFStartsToEnds{$key});
-		    } else {
-			@EndList = sort { $b <=> $a } split(/\|/,$GTFStartsToEnds{$key});
-		    }
-
-		    $gtf_overlap = $i.'..'.$EndList[0];
-		    last;
-		    
-		}
-
-		if ($GTFEndsToStarts{$key}) {
-
-		    my @StartList;
-		    if ($revcomp) {
-			@StartList = sort { $b <=> $a } split(/\|/,$GTFEndsToStarts{$key});
-		    } else {
-			@StartList = sort { $a <=> $b } split(/\|/,$GTFEndsToStarts{$key});
-		    }
-		    
-		    $gtf_overlap = $StartList[0].'..'.$i;
-		    last;
-		    
-		}
-		
-	    }
-
-	    # Aw rats, overlap!
-	    if ($gtf_overlap) {
-		print $outf "      - Overlaps with annotated exon $chr:$gtf_overlap\n";
-		next;
-	    }
-
-	    # One last thing that we'll do is scan backwards and forwards to the
-	    # next annotated exon to make sure the range we've found isn't square
-	    # in the middle of an exon.
-	    if ($revcomp) {
-
-		my $low_scan = $end_nucl-1;
-		while ($low_scan) {
-		    if ($GTFEndsToStarts{$low_scan}) {
-			my @StartList = sort { $b <=> $a } split(/\|/,$GTFEndsToStarts{$low_scan});
-			my $highest_start = $StartList[0];
-			if ($highest_start > $end_nucl) {
-			    $gtf_overlap = $highest_start.'..'.$low_scan;
-			}
-			last;
-		    }
-		    $low_scan--;
-		}
-
-	    } else {
-
-		my $low_scan = $start_nucl-1;
-		while ($low_scan) {
-		    if ($GTFStartsToEnds{$low_scan}) {
-			my @EndList = sort { $b <=> $a } split(/\|/,$GTFStartsToEnds{$low_scan});
-			my $highest_end = $EndList[0];
-			if ($highest_end > $start_nucl) {
-			    $gtf_overlap = $low_scan.'..'.$highest_end;
-			}
-			last;
-		    }
-		    $low_scan--;
-		}
-
-	    }
-
-	    # Aw Rats, OverLap!
-	    if ($gtf_overlap) {
-		print $outf "      - Overlaps with annotated exon $chr:$gtf_overlap\n";
-		next;
-	    }
-
-	    # FINAL SCAN! Finding a high point and seeing if it's lowest corresponding
-	    # low point is problematic (i.e., implies that this exon is known)
-	    if ($revcomp) {
-
-		my $high_scan = $start_nucl-1;
-		while ($high_scan < $chr_len) {
-		    if ($GTFStartsToEnds{$high_scan}) {
-			my @EndList = sort { $a <=> $b } split(/\|/,$GTFStartsToEnds{$high_scan});
-			my $lowest_end = $EndList[0];
-			if ($lowest_end < $start_nucl) {
-			    $gtf_overlap = $high_scan.'..'.$lowest_end;
-			}
-			last;
-		    }
-		    $high_scan++;;
-		}
-
-	    } else {
-
-		my $high_scan = $end_nucl+1;
-		while ($high_scan < $chr_len) {
-		    if ($GTFEndsToStarts{$high_scan}) {
-			my @StartList = sort { $a <=> $b } split(/\|/,$GTFEndsToStarts{$high_scan});
-			my $lowest_start = $StartList[0];
-			if ($lowest_start < $end_nucl) {
-			    $gtf_overlap = $lowest_start.'..'.$high_scan;
-			}
-			last;
-		    }
-		    $high_scan++;
-		}
-
-	    }
-	    
-	    # AW RATS, OVERLAP!
-	    if ($gtf_overlap) {
-		print $outf "      - Overlaps with annotated exon $chr:$gtf_overlap\n";
-		next;
-	    }
-
-	    # AW GOOD RATS, NO OVERLAP!!!
-	    print $outf "      + No observed overlap with annotated exons\n";
-	    
 	}
 	
 	print $outf "\n";
@@ -2350,11 +2173,11 @@ sub RecordGhostMSAs
 	my $wide_nucl_end = 0;
 
 	# Has this exon been annotated in a GTF file provided to Diviner?
-	my $novel_exon = 1;
 	while ($num_tbn_hits) {
 
 	    $line = <$inf>;
-
+	    $num_tbn_hits--;
+	    
 	    $line =~ /\:(\d+)\.\.(\d+)/;
 	    my $hit_nucl_start = $1;
 	    my $hit_nucl_end = $2;
@@ -2375,11 +2198,6 @@ sub RecordGhostMSAs
 		}
 	    }
 
-	    $line = <$inf>;
-	    $novel_exon = 0 if ($line =~ /\- Overlaps/);
-
-	    $num_tbn_hits--;
-	    
 	}
 
 	my $wide_nucl_range = $wide_nucl_start.'..'.$wide_nucl_end;
@@ -2387,7 +2205,6 @@ sub RecordGhostMSAs
 	# Time to record this bad boi!
 	my $hash_val = $target_chr.':'.$wide_nucl_range;
 	$hash_val = $hash_val.'|'.$source_species.':'.$source_seq.':'.$source_amino_range.':'.$msa_exons;
-	$hash_val = $hash_val.'|'.$novel_exon;
 
 	if ($TargetSpeciesToHits{$target_species}) {
 	    $TargetSpeciesToHits{$target_species} = $TargetSpeciesToHits{$target_species}.'&'.$hash_val;
@@ -2501,7 +2318,6 @@ sub RecordGhostMSAs
 	    my @SourceSeqs;
 	    my $msa_start_exon = -1;
             my $msa_end_exon = -1;
-	    my $novel_exon = 1;
 	    foreach my $hit (split(/\&/,$ExonHits[$i])) {
 		
 		$hit =~ /^[^\|]+\|([^\:]+)\:([^\:]+)\:([^\:]+)\:([^\|]+)\|/;
@@ -2526,9 +2342,6 @@ sub RecordGhostMSAs
                 if ($msa_end_exon == -1 || $hit_msa_end_exon > $msa_end_exon) {
                     $msa_end_exon = $hit_msa_end_exon;
                 }
-
-		$hit =~ /\|(\d)$/;
-		$novel_exon *= $1;
 
 	    }
 	    my $num_source_species = scalar(@SourceSpecies);
@@ -3272,16 +3085,44 @@ sub RecordGhostMSAs
 		
 		
 		# Metadata item 1: Target sequence info.
-		my $meta_str = "\n";
-		$meta_str = $meta_str."  Target : $target_species $chr";
-		$meta_str = $meta_str.'[revcomp]' if ($revcomp);
-		$meta_str = $meta_str.":$translation_start..$translation_end\n";
-		
-		if ($novel_exon) {
-		    $meta_str = $meta_str."         : Novel exon (no GTF overlaps)\n";
-		} else {
-		    $meta_str = $meta_str."         : Overlaps with GTF entry\n";
+		my $meta_str = "  Target : $target_species $chr";
+		$meta_str    = $meta_str.'[revcomp]' if ($revcomp);
+		$meta_str    = $meta_str.":$translation_start..$translation_end\n";
+
+
+		# Prep work for novelty checking
+		my $strand = '+';
+		if ($revcomp) {
+		    $strand = '-';
+		    my $tmp = $translation_start;
+		    $translation_start = $translation_end;
+		    $translation_end = $tmp;
 		}
+		
+		my $mb_range_1 = $target_species.'/'.$chr.$strand.':'.(int($translation_start / 1000000));
+		my $mb_range_2 = $target_species.'/'.$chr.$strand.':'.(int($translation_end   / 1000000));
+
+		if ($SpeciesChrMbRangeToHits{$mb_range_1}) {
+		    $SpeciesChrMbRangeToHits{$mb_range_1} = $SpeciesChrMbRangeToHits{$mb_range_1}.'|'.$num_thread_hits;
+		} else {
+		    $SpeciesChrMbRangeToHits{$mb_range_1} = $num_thread_hits;
+		}
+
+		if ($mb_range_2 ne $mb_range_1) {
+		    
+		    if ($SpeciesChrMbRangeToHits{$mb_range_2}) {
+			$SpeciesChrMbRangeToHits{$mb_range_2} = $SpeciesChrMbRangeToHits{$mb_range_2}.'|'.$num_thread_hits;
+		    } else {
+			$SpeciesChrMbRangeToHits{$mb_range_2} = $num_thread_hits;
+		    }
+		    
+		}
+
+		$ThreadHitNumToFileAndData[$num_thread_hits] = $outfname.'|'.$meta_str;
+		$ThreadHitNumToNovelty[$num_thread_hits] = 'Novel';
+
+		$num_thread_hits++;
+
 		
 		# Metadata item 2: Where in the species MSA are these source sequences?
 		$meta_str = $meta_str."  Source : Species-level MSA exon";
@@ -3290,6 +3131,7 @@ sub RecordGhostMSAs
 		} else {
 		    $meta_str = $meta_str."s $msa_start_exon..$msa_end_exon\n";
 		}
+
 		
 		# Metadata item 3: Specific source sequence info.
 		for (my $i=0; $i<$num_matched; $i++) {
@@ -3303,6 +3145,7 @@ sub RecordGhostMSAs
 		
 		# Print the alignment!!!
 		print $outf "\n-----------------------------------------------\n\n" if ($i);
+		print $outf "\n";
 		print $outf "$meta_str";
 		print $outf "$ali_str";
 		
@@ -4314,6 +4157,143 @@ sub CollapseAndCountOverlaps
     
 }
 
+
+
+
+
+
+
+#################################################################
+#
+#  Function: CheckNovelty
+#
+sub CheckNovelty
+{
+    my $species  = shift;
+    my $gtf_name = shift;
+
+    my $GTF = OpenInputFile();
+    while (my $line = <$GTF>) {
+
+	next if ($line !~ /^\s*(\S+)\s+\S+(\S+)\s+(\d+)\s+(\d+)\s+\S+\s+(\S+)/);
+
+	my $gtf_chr    = $1;
+	my $gtf_type   = lc($2);
+	my $gtf_start  = $3;
+	my $gtf_end    = $4;
+	my $gtf_strand = $5;
+
+	if ($gtf_type ne 'cds' && $gtf_type ne 'exon') { next; }
+
+	my $start_mb_range = int($gtf_start / 1000000);
+	my $end_mb_range   = int($gtf_end   / 1000000);
+
+	my $range_key_1 = $species.'/'.$gtf_chr.$gtf_strand.':'.$start_mb_range;
+	my $range_key_2 = $species.'/'.$gtf_chr.$gtf_strand.':'.$end_mb_range;
+
+	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_1})) {
+
+	    next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
+
+	    $ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
+	    my $hit_start = $1;
+	    my $hit_end = $2;
+
+	    if ($gtf_strand eq '-') {
+		my $tmp = $hit_start;
+		$hit_start = $hit_end;
+		$hit_end = $tmp;
+	    }
+
+	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
+		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
+		|| ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
+		$ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
+	    }
+	    
+	}
+
+	next if ($range_key_1 ne $range_key_2);
+	
+	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_2})) {
+
+	    next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
+
+	    $ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
+	    my $hit_start = $1;
+	    my $hit_end = $2;
+
+	    if ($gtf_strand eq '-') {
+		my $tmp = $hit_start;
+		$hit_start = $hit_end;
+		$hit_end = $tmp;
+	    }
+
+	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
+		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
+		|| ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
+		$ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
+	    }
+	    
+	}
+
+    }
+    close($GTF);
+    
+}
+
+
+
+
+
+
+
+#################################################################
+#
+#  Function:  RecordNovelty
+#
+sub RecordNovelty
+{
+    for (my $thread_hit_id=0; $thread_hit_id<$num_thread_hits; $thread_hit_id++) {
+
+	$ThreadHitNumToFileAndData[$num_thread_hits] =~ /^(.*)\|([^\|]+)$/;
+
+	my $fname = $1;
+	my $target_line = $2;
+
+	my $tmp_fname = $fname;
+	$tmp_fname =~ s/\.out$/\.tmp/;
+
+	open(my $Tmp,'>',$tmp_fname)
+	    || die "\n  ERROR:  Failed to open temp file '$tmp_fname'\n\n";
+	my $InFile = OpenInputFile($fname);
+
+	my $line = <$InFile>;
+	print $Tmp "$line";
+	while ($line ne $target_line) {
+	    $line = <$InFile>;
+	    print $Tmp "$line";
+	}
+
+	print $Tmp "         : ";
+	if ($ThreadHitNumToNovelty[$thread_hit_id] eq 'Novel') {
+	    print $Tmp "Novel exon (no GTF overlaps)\n";
+	} else {
+	    print $Tmp "Overlaps with GTF entry\n";
+	} 
+
+	while (!eof($InFile)) {
+	    $line = <$InFile>;
+	    print $Tmp "$line";
+	}
+	
+	close($InFile);
+	close($Tmp);
+
+	RunSystemCommand("mv \"$tmp_fname\" \"$fname\"");
+	
+    }
+}
 
 
 
