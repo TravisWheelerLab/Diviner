@@ -4256,7 +4256,7 @@ sub RecordNovelty
 {
     for (my $thread_hit_id=0; $thread_hit_id<$num_thread_hits; $thread_hit_id++) {
 
-	$ThreadHitNumToFileAndData[$num_thread_hits] =~ /^(.*)\|([^\|]+)$/;
+	$ThreadHitNumToFileAndData[$thread_hit_id] =~ /^(.*)\|([^\|]+)$/;
 
 	my $fname = $1;
 	my $target_line = $2;
