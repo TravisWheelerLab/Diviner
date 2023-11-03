@@ -4066,52 +4066,60 @@ sub CheckNovelty
 	my $range_key_1 = $species.'/'.$gtf_chr.$gtf_strand.':'.$start_mb_range;
 	my $range_key_2 = $species.'/'.$gtf_chr.$gtf_strand.':'.$end_mb_range;
 
-	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_1})) {
+	if ($SpeciesChrMbRangeToHits{$range_key_1}) {
 
-	    next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
+	    foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_1})) {
+		
+		next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
+		
+		$ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
+		my $hit_start = $1;
+		my $hit_end = $2;
+		
+		if ($gtf_strand eq '-') {
+		    my $tmp = $hit_start;
+		    $hit_start = $hit_end;
+		    $hit_end = $tmp;
+		}
+		
+		if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
+		    || ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
+		    || ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
+		    $ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
+		}
 
-	    $ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
-	    my $hit_start = $1;
-	    my $hit_end = $2;
-
-	    if ($gtf_strand eq '-') {
-		my $tmp = $hit_start;
-		$hit_start = $hit_end;
-		$hit_end = $tmp;
 	    }
 
-	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
-		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
-		|| ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
-		$ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
-	    }
-	    
+	    next if ($range_key_1 eq $range_key_2);
+		
 	}
 
-	next if ($range_key_1 eq $range_key_2);
-	
-	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_2})) {
-
-	    next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
-
-	    $ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
-	    my $hit_start = $1;
-	    my $hit_end = $2;
-
-	    if ($gtf_strand eq '-') {
-		my $tmp = $hit_start;
-		$hit_start = $hit_end;
-		$hit_end = $tmp;
-	    }
-
-	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
-		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
-		|| ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
-		$ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
-	    }
+	if ($SpeciesChrMbRangeToHits{$range_key_2}) {
 	    
-	}
+	    foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_2})) {
+		
+		next if ($ThreadHitNumToNovelty[$thread_hit_id] ne 'Novel');
+		
+		$ThreadHitNumToFileAndData[$thread_hit_id] =~ /\:(\d+)\.\.(\d+)/;
+		my $hit_start = $1;
+		my $hit_end = $2;
+		
+		if ($gtf_strand eq '-') {
+		    my $tmp = $hit_start;
+		    $hit_start = $hit_end;
+		    $hit_end = $tmp;
+		}
+		
+		if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
+		    || ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
+		    || ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
+		    $ThreadHitNumToNovelty[$thread_hit_id] = ' GTF ';
+		}
+		
+	    }
 
+	}
+	    
     }
     close($GTF);
     
