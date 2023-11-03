@@ -4050,7 +4050,7 @@ sub CheckNovelty
     my $GTF = OpenInputFile($gtf_name);
     while (my $line = <$GTF>) {
 
-	next if ($line !~ /^\s*(\S+)\s+\S+(\S+)\s+(\d+)\s+(\d+)\s+\S+\s+(\S+)/);
+	next if ($line !~ /^\s*(\S+)\s+\S+\s+(\S+)\s+(\d+)\s+(\d+)\s+\S+\s+(\S+)/);
 
 	my $gtf_chr    = $1;
 	my $gtf_type   = lc($2);
@@ -4058,9 +4058,6 @@ sub CheckNovelty
 	my $gtf_end    = $4;
 	my $gtf_strand = $5;
 
-	# DEBUGGING
-	print "\n\n -- $gtf_chr / $gtf_type / $gtf_start / $gtf_end / $gtf_strand\n\n\n";
-	
 	if ($gtf_type ne 'cds' && $gtf_type ne 'exon') { next; }
 
 	my $start_mb_range = int($gtf_start / 100000);
@@ -4068,17 +4065,6 @@ sub CheckNovelty
 
 	my $range_key_1 = $species.'/'.$gtf_chr.$gtf_strand.':'.$start_mb_range;
 	my $range_key_2 = $species.'/'.$gtf_chr.$gtf_strand.':'.$end_mb_range;
-
-	# DEBUGGING
-	print "\n\n";
-	print " RK1: $range_key_1\n";
-	print " RK2: $range_key_2\n";
-	print "\n\n";
-	foreach my $hashkey (keys %SpeciesChrMbRangeToHits) {
-	    print " ---> $hashkey\n";
-	}
-	die "\n\n";
-	# DEBUGGING
 
 	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_1})) {
 
