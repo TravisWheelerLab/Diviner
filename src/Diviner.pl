@@ -4172,7 +4172,7 @@ sub CheckNovelty
     my $species  = shift;
     my $gtf_name = shift;
 
-    my $GTF = OpenInputFile();
+    my $GTF = OpenInputFile($gtf_name);
     while (my $line = <$GTF>) {
 
 	next if ($line !~ /^\s*(\S+)\s+\S+(\S+)\s+(\d+)\s+(\d+)\s+\S+\s+(\S+)/);
