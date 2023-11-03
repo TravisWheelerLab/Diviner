@@ -4058,6 +4058,9 @@ sub CheckNovelty
 	my $gtf_end    = $4;
 	my $gtf_strand = $5;
 
+	# DEBUGGING
+	print "\n\n -- $gtf_chr / $gtf_type / $gtf_start / $gtf_end / $gtf_strand\n\n\n";
+	
 	if ($gtf_type ne 'cds' && $gtf_type ne 'exon') { next; }
 
 	my $start_mb_range = int($gtf_start / 100000);
