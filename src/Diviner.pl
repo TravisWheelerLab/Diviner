@@ -3099,8 +3099,8 @@ sub RecordGhostMSAs
 		    $translation_end = $tmp;
 		}
 		
-		my $mb_range_1 = $target_species.'/'.$chr.$strand.':'.(int($translation_start / 1000000));
-		my $mb_range_2 = $target_species.'/'.$chr.$strand.':'.(int($translation_end   / 1000000));
+		my $mb_range_1 = $target_species.'/'.$chr.$strand.':'.(int($translation_start / 100000));
+		my $mb_range_2 = $target_species.'/'.$chr.$strand.':'.(int($translation_end   / 100000));
 
 		if ($SpeciesChrMbRangeToHits{$mb_range_1}) {
 		    $SpeciesChrMbRangeToHits{$mb_range_1} = $SpeciesChrMbRangeToHits{$mb_range_1}.'|'.$num_thread_hits;
@@ -4060,11 +4060,22 @@ sub CheckNovelty
 
 	if ($gtf_type ne 'cds' && $gtf_type ne 'exon') { next; }
 
-	my $start_mb_range = int($gtf_start / 1000000);
-	my $end_mb_range   = int($gtf_end   / 1000000);
+	my $start_mb_range = int($gtf_start / 100000);
+	my $end_mb_range   = int($gtf_end   / 100000);
 
 	my $range_key_1 = $species.'/'.$gtf_chr.$gtf_strand.':'.$start_mb_range;
 	my $range_key_2 = $species.'/'.$gtf_chr.$gtf_strand.':'.$end_mb_range;
+
+	# DEBUGGING
+	print "\n\n";
+	print " RK1: $range_key_1\n";
+	print " RK2: $range_key_2\n";
+	print "\n\n";
+	foreach my $hashkey (keys %SpeciesChrMbRangeToHits) {
+	    print " ---> $hashkey\n";
+	}
+	die "\n\n";
+	# DEBUGGING
 
 	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_1})) {
 
@@ -4080,15 +4091,6 @@ sub CheckNovelty
 		$hit_end = $tmp;
 	    }
 
-	    # DEBUGGING
-	    print "\n\n";
-	    print "   GTF:  $line";
-	    print "      '-> Chromosome: $gtf_chr($gtf_strand) $gtf_start..$gtf_end\n\n";
-	    print "   Div:  $ThreadHitNumToFileAndData[$thread_hit_id]\n";
-	    print "      '-> $hit_start..$hit_end";
-	    die   "\n\n";
-	    # DEBUGGING
-
 	    if (($hit_start <= $gtf_start && $hit_end >= $gtf_start)
 		|| ($hit_start <= $gtf_end && $hit_end >= $gtf_end)
 		|| ($hit_start >= $gtf_start && $hit_end <= $gtf_end)) {
@@ -4097,7 +4099,7 @@ sub CheckNovelty
 	    
 	}
 
-	next if ($range_key_1 ne $range_key_2);
+	next if ($range_key_1 eq $range_key_2);
 	
 	foreach my $thread_hit_id (split(/\|/,$SpeciesChrMbRangeToHits{$range_key_2})) {
 
