@@ -1923,7 +1923,7 @@ sub FindAliQualityDrops
     }
 
     my $exon_id = 0;
-    while ($PctsID[$exon_id] == 0) {
+    while ($exon_id < scalar(@PctsID) && $PctsID[$exon_id] == 0) {
 	$exon_id++;
     }
     my $last_exon_pct_id = $PctsID[$exon_id++];
