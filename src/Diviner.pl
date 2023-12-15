@@ -138,12 +138,6 @@ close($tildedir_check);
 ReportProgress('startup');
 
 
-# What we're going to do is break up our hits according to the chromosome
-# they hit to, which can then be searched against GTF ranges also broken
-# up according to chromosome
-my $micro_gtfs_dirname = CreateDirectory($input_dirname.'Temp-GTF-Data');
-
-
 my $SpeciesGuide = OpenInputFile($ARGV[1]);
 my %SpeciesToGenomes;
 my %SpeciesToGTF;
@@ -182,14 +176,12 @@ while (my $line = <$SpeciesGuide>) {
     }
     close ($SstatOut);
 
-    # We'll read in the species' GTF info so we can determine whether
-    # any ghost exons we hit on are known coding regions (and not just
-    # members of proteoforms that are missing from our database).
+    # There may not be a GTF for every species, but if there is
+    # a GTF we'll want to know its name.
     if (-e $gtf) {
 	$SpeciesToGTF{$species} = $gtf;
-	SplitGTFIntoChrs($species,$gtf);
     }
-    
+
 }
 close($SpeciesGuide);
 
@@ -232,6 +224,15 @@ my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
 InitProgressVars($outdirname.'.progress',$num_cpus,scalar(@GeneList));
 
 
+# We'll read in the species' GTF info so we can determine whether
+# any ghost exons we hit on are known coding regions (and not just
+# members of proteoforms that are missing from our database).
+my $micro_gtfs_dirname = CreateDirectory($outdirname.'Temp-GTF-Data');
+foreach my $species (keys %SpeciesToGTF) {
+    SplitGTFIntoChrs($species,$SpeciesToGTF{$species});
+}
+    
+
 # Look away, children, the processes are spawning!
 my $threadID = SpawnProcesses($num_cpus);
 
@@ -250,9 +251,6 @@ my $prot_seq_fname = $outgenesdir.'prot.tmp.'.$threadID.'.fa';
 my $tbn_out_fname  = $outgenesdir.'tbn.tmp.'.$threadID.'.out';
 $tblastn = $tblastn.' -subject '.$nucl_seq_fname.' -query '.$prot_seq_fname;
 $tblastn = $tblastn.' -out '.$tbn_out_fname.' 1>/dev/null 2>&1';
-
-
-# WE NEED TO FIGURE OUT HOW WE'RE GOING TO TRACK NOVELTY!!!!
 
 
 # TIME FOR THE MAIN EVENT!
