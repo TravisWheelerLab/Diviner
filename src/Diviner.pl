@@ -354,9 +354,9 @@ ReportProgress('final');
 for ($threadID=0; $threadID<$num_cpus; $threadID++) {
 
     # Clear out all these files we don't need
-    $nucl_seq_fname = $outgenesdir.'nucl.tmp'.$threadID.'.fa';
-    $prot_seq_fname = $outgenesdir.'prot.tmp'.$threadID.'.fa';
-    $tbn_out_fname  = $outgenesdir.'tbn.tmp'.$threadID.'.out';
+    $nucl_seq_fname = $outgenesdir.'nucl.tmp.'.$threadID.'.fa';
+    $prot_seq_fname = $outgenesdir.'prot.tmp.'.$threadID.'.fa';
+    $tbn_out_fname  = $outgenesdir.'tbn.tmp.'.$threadID.'.out';
 
     if (-e $nucl_seq_fname) { system("rm $nucl_seq_fname"); }
     if (-e $prot_seq_fname) { system("rm $prot_seq_fname"); }
