@@ -263,7 +263,6 @@ $tblastn = $tblastn.' -out '.$tbn_out_fname.' 1>/dev/null 2>&1';
 #
 my $total_ghost_exons = 0;
 my $total_ghosts_busted = 0;
-my @GhostlyGenes;
 for (my $gene_id=$start_gene_id; $gene_id<$end_gene_id; $gene_id++) {
 
     my $completed_genes = $gene_id - $start_gene_id;
@@ -320,9 +319,6 @@ for (my $gene_id=$start_gene_id; $gene_id<$end_gene_id; $gene_id++) {
     # Time to build some gorgeous translated MSAs!
     RecordGhostMSAs($gene);
 
-    # Eeek! Ghosts!
-    push(@GhostlyGenes,$gene);
-
 }
 
 
@@ -330,11 +326,6 @@ for (my $gene_id=$start_gene_id; $gene_id<$end_gene_id; $gene_id++) {
 if ($threadID) {
     my $final_outf = OpenOutputFile($outgenesdir.$threadID.'.final-tally.out');
     print $final_outf "$total_ghosts_busted / $total_ghost_exons\n";
-    for (my $i=0; $i<scalar(@GhostlyGenes); $i++) {
-	print $final_outf '|' if ($i);
-	print $final_outf "$GhostlyGenes[$i]";
-    }
-    print $final_outf "\n";
     close($final_outf);
 }
 
@@ -373,18 +364,12 @@ for ($threadID=0; $threadID<$num_cpus; $threadID++) {
 	$total_ghosts_busted += $1;
 	$total_ghost_exons += $2;
 	
-	$line = <$final_inf>;
-	$line =~ s/\n|\r//g;
-	foreach my $gene (split(/\|/,$line)) {
-	    push(@GhostlyGenes,$gene);
-	}
-
 	# Now erase every last trace of that darn helper from the Earth!
 	close($final_inf);
 	system("rm $final_infname");
 
     }
-	
+
 }
 
 
@@ -402,7 +387,7 @@ if ($total_ghost_exons == 0) {
 
 # We'll write out summary statistics for the full collection of genes
 # that had hits
-GetMapSummaryStats(\@GhostlyGenes);
+GetMapSummaryStats();
 
 
 # Clear out that stinky ol' GTF data directory!
@@ -1970,16 +1955,6 @@ sub FindGhostExons
 	print $outf "    Search Sequence : $mapped_seq\n";
 	print $outf "    Num tblastn Hits: $num_tbn_hits\n";
 
-	# I'm going to take this 'underlining' out for now, and let the
-	# upper / lower case distinction speak for itself.
-	#
-	#print $outf "    ";
-	#foreach my $char (@MappedSeq) {
-	#if ($char eq uc($char)) { print $outf '-'; }
-	#else                    { print $outf ' '; }
-	#}
-	#print $outf "\n";
-
 	for (my $hit=0; $hit<$num_tbn_hits; $hit++) {
 
 	    # What aminos (within the species sequence) were part of this hit?
@@ -2476,140 +2451,162 @@ sub RecordGhostMSAs
 		$search_end += $extra_window;
 	    }
 
-	    my $sfetch_cmd = $sfetch.' -range '.$search_start.'..'.$search_end;
-	    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-	    my $nucl_inf = OpenSystemCommand($sfetch_cmd);
-	    my $header_line = <$nucl_inf>;
-	    my $nucl_seq = '';
-	    while (my $line = <$nucl_inf>) {
-		$line =~ s/\n|\r//g;
-		$nucl_seq = $nucl_seq.uc($line);
-	    }
-	    close($nucl_inf);
 
-	    my @NuclSeq = split(//,$nucl_seq);
-
+	    # Now that we have a nice ol' search window, we'll start looking for
+	    # where our hits are.
+	    #
 	    # Instead of picking an individual reading frame to work with, we'll
 	    # track down any regions that have a score density >2 and take note of
 	    # which portions of which source sequences are associated with those
 	    # regions.
-
-	    # Check which reading frame looks like it's the one we're supposed to be
-	    # working with...
+	    
 	    my @FrameTransStrs;
 	    my @AllHits;
 	    my @HitSetsByTargetRegion;
 	    my $num_hits = 0;
-	    for (my $frame=0; $frame<3; $frame++) {
+	    
+	    # In case our range looks larger than we'd like to do in one go,
+	    # we'll split it into 300kb chunks
+	    my $chunk_size = 300000;
+	    for (my $chunk_start=$search_start; $chunk_start<$search_end; $chunk_start += $chunk_size) {
 
-		# Pull in this reading frame
-		my $frame_str = '';
-		my $trans_str = '';
-		my @TransChars;
-		for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
+		my $chunk_offset = $chunk_start - $search_start;
+		my $chunk_end = $chunk_start + $chunk_size;
 
-		    my $codon = $NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2];
-		    $frame_str = $frame_str.$codon;
-
-		    my $trans_aa = TranslateCodon($codon);
-		    $trans_str = $trans_str.$trans_aa;
-
-		    push(@TransChars,$trans_aa);
-
+		my $sfetch_cmd = $sfetch.' -range '.$chunk_start.'..'.$chunk_end;
+		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
+		my $header_line = <$nucl_inf>;
+		my $nucl_seq = '';
+		while (my $line = <$nucl_inf>) {
+		    $line =~ s/\n|\r//g;
+		    $nucl_seq = $nucl_seq.uc($line);
 		}
+		close($nucl_inf);
+		
+		my @NuclSeq = split(//,$nucl_seq);
+		
+		for (my $frame=0; $frame<3; $frame++) {
+		    
+		    # Pull in this reading frame
+		    my $frame_str = '';
+		    my $trans_str = '';
+		    my @TransChars;
+		    for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
+			
+			my $codon = $NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2];
+			$frame_str = $frame_str.$codon;
+			
+			my $trans_aa = TranslateCodon($codon);
+			$trans_str = $trans_str.$trans_aa;
+			
+			push(@TransChars,$trans_aa);
+			
+		    }
+		    
+		    push(@FrameTransStrs,$trans_str);
+		    
+		    # For each of our source sequences, we'll get a sorted list of
+		    # hits (by score density), which we'll then organize into groups
+		    # that overlap on the target genome.
+		    my @FrameHitsByTargetRegion;
+		    for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
+			
+			my @SourceChars = split(//,$SourceSeqs[$source_id]);
+			
+			my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
+			    = GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
+			
+			next if (!$num_alis);
+			
+			# NOTE: The "Ranges" here are w.r.t. the sequence implicated
+			#       in the hit (not the actual amino acid coordinates in the
+			#       full sequence)
+			#
+			my @ScoreDensities = @{$score_densities_ref};
+			my @TargetRanges = @{$target_ranges_ref};
+			my @SourceRanges = @{$source_ranges_ref};
 
-		push(@FrameTransStrs,$trans_str);
-
-		# For each of our source sequences, we'll get a sorted list of
-		# hits (by score density), which we'll then organize into groups
-		# that overlap on the target genome.
-		my @FrameHitsByTargetRegion;
-		for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
-
-		    my @SourceChars = split(//,$SourceSeqs[$source_id]);
-
-		    my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
-			= GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
-
-		    next if (!$num_alis);
-
-		    # NOTE: The "Ranges" here are w.r.t. the sequence implicated
-		    #       in the hit (not the actual amino acid coordinates in the
-		    #       full sequence)
-		    my @ScoreDensities = @{$score_densities_ref};
-		    my @TargetRanges = @{$target_ranges_ref};
-		    my @SourceRanges = @{$source_ranges_ref};
-
-		    for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
-
-			my $score_density = $ScoreDensities[$hit_id];
-			my $target_range = $TargetRanges[$hit_id];
-			my $source_range = $SourceRanges[$hit_id];
-
-			push(@AllHits,$score_density.':'.$target_range.'/'.$source_range.'/'.$source_id);
-
-			my $new_range = 1;
-			for (my $range_id=0; $range_id<scalar(@FrameHitsByTargetRegion); $range_id++) {
-
-			    $FrameHitsByTargetRegion[$range_id] =~ /^([^\:]+)\:(\S+)$/;
+			for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
 			    
-			    my $group_range = $1;
-			    my $group_data  = $2;
-
-			    my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
+			    my $score_density = $ScoreDensities[$hit_id];
+			    my $target_range = $TargetRanges[$hit_id];
+			    my $source_range = $SourceRanges[$hit_id];
 			    
-			    if ($overlap) {
-				$FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
-				$new_range = 0;
+			    # If this is part of a *large* hit, we might need to adjust the
+			    # coordinates of our hit ranges on the genome
+			    if ($chunk_start > $search_start) {
+				$target_range =~ /^(\d+)\.\.(\d+)$/;
+				$target_range = ($1+$chunk_offset).'..'.($2+$chunk_offset);
+			    }
+			    
+			    push(@AllHits,$score_density.':'.$target_range.'/'.$source_range.'/'.$source_id);
+			    
+				
+			    my $new_range = 1;
+			    for (my $range_id=0; $range_id<scalar(@FrameHitsByTargetRegion); $range_id++) {
+				
+				$FrameHitsByTargetRegion[$range_id] =~ /^([^\:]+)\:(\S+)$/;
+				
+				my $group_range = $1;
+				my $group_data  = $2;
+				
+				my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
+				
+				if ($overlap) {
+				    $FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
+				    $new_range = 0;
+				    last;
+				}
+				
+			    }
+			    
+			    if ($new_range) {
+				push(@FrameHitsByTargetRegion,$target_range.':'.$frame.':'.$num_hits);
+			    }
+			    
+			    $num_hits++;
+			    
+			}
+			
+		    }
+		    
+		    
+		    # Now we'll integrate the new set of hits according to
+		    # the order of the target region
+		    foreach my $frame_hit_set (@FrameHitsByTargetRegion) {
+			
+			$frame_hit_set =~ /^(\d+)\.\./;
+			my $target_start = $1;
+			
+			my $inserted = 0;
+			
+			for (my $hit_set_id=0; $hit_set_id<scalar(@HitSetsByTargetRegion); $hit_set_id++) {
+			    
+			    $HitSetsByTargetRegion[$hit_set_id] =~ /^(\d+)\.\./;
+			    my $hit_target_start = $1;
+			    
+			    if ($hit_target_start > $target_start) {
+				
+				splice(@HitSetsByTargetRegion,$hit_set_id,0,$frame_hit_set);
+				$inserted = 1;
 				last;
+				
 			    }
 			    
 			}
-
-			if ($new_range) {
-			    push(@FrameHitsByTargetRegion,$target_range.':'.$frame.':'.$num_hits);
+			
+			if (!$inserted) {
+			    push(@HitSetsByTargetRegion,$frame_hit_set);
 			}
-
-			$num_hits++;
 			
 		    }
 		    
 		}
-
 		
-		# Now we'll integrate the new set of hits according to
-		# the order of the target region
-		foreach my $frame_hit_set (@FrameHitsByTargetRegion) {
-
-		    $frame_hit_set =~ /^(\d+)\.\./;
-		    my $target_start = $1;
-
-		    my $inserted = 0;
-
-		    for (my $hit_set_id=0; $hit_set_id<scalar(@HitSetsByTargetRegion); $hit_set_id++) {
-
-			$HitSetsByTargetRegion[$hit_set_id] =~ /^(\d+)\.\./;
-			my $hit_target_start = $1;
-
-			if ($hit_target_start > $target_start) {
-
-			    splice(@HitSetsByTargetRegion,$hit_set_id,0,$frame_hit_set);
-			    $inserted = 1;
-			    last;
-			    
-			}
-			
-		    }
-
-		    if (!$inserted) {
-			push(@HitSetsByTargetRegion,$frame_hit_set);
-		    }
-		    
-		}
-				
 	    }
 
-
+	    
 	    # Did we not end up with any hit sets to play with?
 	    next if (scalar(@HitSetsByTargetRegion) == 0);
 
@@ -2997,18 +2994,18 @@ sub RecordGhostMSAs
 		
 		# Great!  Now that we have our final nucleotide region, let's grab
 		# those nucleotides.
-		$sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		my $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
 		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-		$nucl_inf = OpenSystemCommand($sfetch_cmd);
-		$header_line = <$nucl_inf>;
-		$nucl_seq = '';
+		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
+		my $header_line = <$nucl_inf>;
+		my $nucl_seq = '';
 		while (my $line = <$nucl_inf>) {
 		    $line =~ s/\n|\r//g;
 		    next if (!$line);
 		    $nucl_seq = $nucl_seq.uc($line);
 		}
 		close($nucl_inf);
-		@NuclSeq = split(//,$nucl_seq);
+		my @NuclSeq = split(//,$nucl_seq);
 		
 		
 		# FINALLY TIME TO SKETCH OUR FINAL MSA
@@ -3812,16 +3809,19 @@ sub RecordFrameConflict
 sub GetMapSummaryStats
 {
 
-    my $ghostlygenes_ref = shift;
-    my @GhostlyGenes = @{$ghostlygenes_ref};
-
     my $outf = OpenOutputFile($outdirname.'Search-Summary.out');
 
     my %TargetSpeciesToSuggested;
     my %TargetSpeciesToAnnotated;
     my @FullHitList;
-    
-    foreach my $gene (sort @GhostlyGenes) {
+
+    my $GenesDir = OpenDirectory($outgenesdir);
+    foreach my $gene ($GenesDir) {
+
+	$gene =~ s/\/$//;
+
+	next if ($gene =~ /^\./);
+	next if (!(-d $outgenesdir.$gene.'/alignments/'));
 	
 	my $infname = $outgenesdir.$gene.'/search.out';
 	my $inf = OpenInputFile($infname);
@@ -3980,7 +3980,7 @@ sub GetMapSummaryStats
 	}
 	
     }
-
+    closedir($GenesDir);
     close($outf);
 
 }
