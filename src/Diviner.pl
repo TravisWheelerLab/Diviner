@@ -1617,9 +1617,9 @@ sub FindGhostExons
 
 			if ($region_start && $region_end) {
 			    if ($used_regions_str) {
-				$used_regions_str = $used_regions_str.'&'.$region_start.'|'.$region_end;
+				$used_regions_str = $used_regions_str.'&'.$region_start.'..'.$region_end;
 			    } else {
-				$used_regions_str = $region_start.'|'.$region_end;
+				$used_regions_str = $region_start.'..'.$region_end;
 			    }
 			}
 			
@@ -1627,7 +1627,7 @@ sub FindGhostExons
 
 		    # Just to make sure we're sticking something into our list
 		    if (!$used_regions_str) {
-			$used_regions_str = '0|0';
+			$used_regions_str = '0..0';
 		    }
 
 
@@ -1804,102 +1804,91 @@ sub FindGhostExons
 	    }
 	}
 
-	# Well, we sure know what sequence to pull in now, don't we!
-	my $sfetch_cmd = $sfetch.' -range '.$SearchRanges[0].'..'.$SearchRanges[1];
-	$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-	$sfetch_cmd = $sfetch_cmd.' > '.$nucl_seq_fname;
-	RunSystemCommand($sfetch_cmd);
-
-	# Because of the wonders of filename standardization, we can do this!
-	RunSystemCommand($tblastn);
-
+	
 	# Grab the list of coordinates that have already been used for mapping this
 	# sequence's analog (not the right word, maybe, but you know what I mean).
 	my @PrevUsedRegions = split(/\&/,$UsedRegions[$q]);
 
-	# What did we get?
+	
+	# In case this is a large sequence window, we'll break up our
+	# tblastn searching into 100kb sub-ranges
 	my @HitAminoStarts;
 	my @HitAminoEnds;
 	my @HitNuclStarts;
 	my @HitNuclEnds;
 	my @HitEVals;
 	my $num_tbn_hits = 0;
-	my $tbnf = OpenInputFile($tbn_out_fname);
-	while (my $line = <$tbnf>) {
-	    if ($line) {
-		
-		my @HitData = split(/\s+/,$line);
-		my $amino_start = $HitData[6];
-		my $amino_end   = $HitData[7];
-		my $nucl_start  = $HitData[8];
-		my $nucl_end    = $HitData[9];
-		my $e_val       = $HitData[10];
+	my $sub_range_size = 100000;
+	for (my $sub_range_low = Min($SearchRanges[0],$SearchRanges[1]);
+	     $sub_range_low < Max($SearchRanges[0],$SearchRanges[1]);
+	     $sub_range_low += $sub_range_size) {
 
-		# We'll take notice of any hits with an e-val with a '-'
-		next if ($e_val !~ /e\-/);
+	    my $sub_range_high = Min($sub_range_low+$sub_range_size,
+				     Max($SearchRanges[0],$SearchRanges[1]));
 
-		# What are the actual nucleotide coords?
-		if ($revcomp) {
-		    $nucl_start = $SearchRanges[0] - $nucl_start;
-		    $nucl_end   = $SearchRanges[0] - $nucl_end;
-		} else {
-		    $nucl_start += $SearchRanges[0];
-		    $nucl_end   += $SearchRanges[0];
-		}
-
-		# We need to confirm that this isn't overlapping with any of
-		# the nucleotide regions that have been previously used to
-		# map this sequence.
-		# It also can't fully contain an exon, ding-dong!
-		my $was_prev_used = 0;
-		foreach my $prev_used_region (@PrevUsedRegions) {
-
-		    $prev_used_region =~ /^(\d+)\|(\d+)$/;
-		    my $prev_start = $1;
-		    my $prev_end = $2;
-
+	    my $sub_range = $sub_range_low.'..'.$sub_range_high;
+	    if ($SearchRanges[0] > $SearchRanges[1]) {
+		$sub_range = $sub_range_high.'..'.$sub_range_low;
+	    }
+	    
+	    # Well, we sure know what sequence to pull in now, don't we!
+	    my $sfetch_cmd = $sfetch.' -range '.$sub_range;
+	    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+	    $sfetch_cmd = $sfetch_cmd.' > '.$nucl_seq_fname;
+	    RunSystemCommand($sfetch_cmd);
+	    
+	    # Because of the wonders of filename standardization, we can do this!
+	    RunSystemCommand($tblastn);
+	    
+	    # What did we get?
+	    my $tbnf = OpenInputFile($tbn_out_fname);
+	    while (my $line = <$tbnf>) {
+		if ($line) {
+		    
+		    my @HitData = split(/\s+/,$line);
+		    my $amino_start = $HitData[6];
+		    my $amino_end   = $HitData[7];
+		    my $nucl_start  = $HitData[8];
+		    my $nucl_end    = $HitData[9];
+		    my $e_val       = $HitData[10];
+		    
+		    # We'll take notice of any hits with an e-val with a '-'
+		    next if ($e_val !~ /e\-/);
+		    
+		    # What are the actual nucleotide coords?
 		    if ($revcomp) {
-			if ($nucl_start <= $prev_start && $nucl_start >= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
-			if ($nucl_end <= $prev_start && $nucl_end >= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
-			if ($nucl_start >= $prev_start && $nucl_end <= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
+			$nucl_start = $sub_range_high - $nucl_start;
+			$nucl_end   = $sub_range_high - $nucl_end;
 		    } else {
-			if ($nucl_start >= $prev_start && $nucl_start <= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
-			if ($nucl_end >= $prev_start && $nucl_end <= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
-			if ($nucl_start <= $prev_start && $nucl_end >= $prev_end) {
-			    $was_prev_used = 1;
-			    last;
-			}
+			$nucl_start += $sub_range_low;
+			$nucl_end   += $sub_range_low;
+		    }
+		    my $nucl_range = $nucl_start.'..'.$nucl_end;
+		    
+		    # We need to confirm that this isn't overlapping with any of
+		    # the nucleotide regions that have been previously used to
+		    # map this sequence.
+		    # It also can't fully contain an exon, ding-dong!
+		    my $was_prev_used = 0;
+		    foreach my $prev_used_region (@PrevUsedRegions) {
+			$was_prev_used = RangesOverlap($prev_used_region,$nucl_range);
+			last if ($was_prev_used);
 		    }
 
+		    next if ($was_prev_used);
+
+		    push(@HitAminoStarts,$amino_start);
+		    push(@HitAminoEnds,$amino_end);
+		    push(@HitNuclStarts,$nucl_start);
+		    push(@HitNuclEnds,$nucl_end);
+		    push(@HitEVals,$e_val);
+		    $num_tbn_hits++;
+
 		}
-
-		next if ($was_prev_used);
-
-		push(@HitAminoStarts,$amino_start);
-		push(@HitAminoEnds,$amino_end);
-		push(@HitNuclStarts,$nucl_start);
-		push(@HitNuclEnds,$nucl_end);
-		push(@HitEVals,$e_val);
-		$num_tbn_hits++;
-
 	    }
+	    close($tbnf);
+
 	}
-	close($tbnf);
 
 	# For outputting, let's get the textual representation of direction
 	# into the chromosome name (after recording the chromosome length of
@@ -2451,146 +2440,167 @@ sub RecordGhostMSAs
 		$search_end += $extra_window;
 	    }
 
-	    # Let's limit this to 250kb -- maybe at some point have a warning
-	    # that lets the user know when we bailed on a search due to length
-	    # concerns...
-	    next if (abs($search_end - $search_start) > 250000);
-
 	    # Now that we have a nice ol' search window, we'll start looking for
 	    # where our hits are.
 	    #
 	    # Instead of picking an individual reading frame to work with, we'll
 	    # track down any regions that have a score density >2 and take note of
 	    # which portions of which source sequences are associated with those
-	    # regions.
-	    
+	    # regions.	    
 	    my @FrameTransStrs;
 	    my @AllHits;
 	    my @HitSetsByTargetRegion;
 	    my $num_hits = 0;
-	    
-	    my $sfetch_cmd = $sfetch.' -range '.$search_start.'..'.$search_end;
-	    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-	    my $nucl_inf = OpenSystemCommand($sfetch_cmd);
-	    my $header_line = <$nucl_inf>;
-	    my $nucl_seq = '';
-	    while (my $line = <$nucl_inf>) {
-		$line =~ s/\n|\r//g;
-		$nucl_seq = $nucl_seq.uc($line);
-	    }
-	    close($nucl_inf);
-		
-	    my @NuclSeq = split(//,$nucl_seq);
-	    
-	    for (my $frame=0; $frame<3; $frame++) {
-		
-		# Pull in this reading frame
-		my $frame_str = '';
-		my $trans_str = '';
-		my @TransChars;
-		for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
-		    
-		    my $codon = $NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2];
-		    $frame_str = $frame_str.$codon;
-		    
-		    my $trans_aa = TranslateCodon($codon);
-		    $trans_str = $trans_str.$trans_aa;
-		    
-		    push(@TransChars,$trans_aa);
-		    
-		}
-		
-		push(@FrameTransStrs,$trans_str);
-		
-		# For each of our source sequences, we'll get a sorted list of
-		# hits (by score density), which we'll then organize into groups
-		# that overlap on the target genome.
-		my @FrameHitsByTargetRegion;
-		for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
-		    
-		    my @SourceChars = split(//,$SourceSeqs[$source_id]);
-		    
-		    my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
-			= GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
-		    
-		    next if (!$num_alis);
-		    
-		    # NOTE: The "Ranges" here are w.r.t. the sequence implicated
-		    #       in the hit (not the actual amino acid coordinates in the
-		    #       full sequence)
-		    #
-		    my @ScoreDensities = @{$score_densities_ref};
-		    my @TargetRanges = @{$target_ranges_ref};
-		    my @SourceRanges = @{$source_ranges_ref};
-		    
-		    for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
-			
-			my $score_density = $ScoreDensities[$hit_id];
-			my $target_range = $TargetRanges[$hit_id];
-			my $source_range = $SourceRanges[$hit_id];
-			
-			push(@AllHits,$score_density.':'.$target_range.'/'.$source_range.'/'.$source_id);
 
+	    # If this is a large search window, we'll want to break it up into
+	    # managable bites.
+	    my $sub_range_size = 100000;
+	    for (my $sub_range_low = Min($search_start,$search_end);
+		 $sub_range_low < Max($search_start,$search_end);
+		 $sub_range_low += $sub_range_size) {
+
+		my $sub_range_high = Min($sub_range_low+$sub_range_size,
+					 Max($search_start,$search_end));
+
+		my $sub_range = $sub_range_low.'..'.$sub_range_high;
+		if ($revcomp) {
+		    $sub_range = $sub_range_high.'..'.$sub_range_low;
+		}
+	    
+		my $sfetch_cmd = $sfetch.' -range '.$sub_range;
+		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
+		my $header_line = <$nucl_inf>;
+		my $nucl_seq = '';
+		while (my $line = <$nucl_inf>) {
+		    $line =~ s/\n|\r//g;
+		    $nucl_seq = $nucl_seq.uc($line);
+		}
+		close($nucl_inf);
+		
+		my @NuclSeq = split(//,$nucl_seq);
+	    
+		for (my $frame=0; $frame<3; $frame++) {
+		
+		    # Pull in this reading frame
+		    my $frame_str = '';
+		    my $trans_str = '';
+		    my @TransChars;
+		    for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
 			
-			my $new_range = 1;
-			for (my $range_id=0; $range_id<scalar(@FrameHitsByTargetRegion); $range_id++) {
-			    
-			    $FrameHitsByTargetRegion[$range_id] =~ /^([^\:]+)\:(\S+)$/;
-			    
-			    my $group_range = $1;
-			    my $group_data  = $2;
-			    
-			    my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
-			    
-			    if ($overlap) {
-				$FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
-				$new_range = 0;
-				last;
-			    }
-			    
-			}
+			my $codon = $NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2];
+			$frame_str = $frame_str.$codon;
 			
-			if ($new_range) {
-			    push(@FrameHitsByTargetRegion,$target_range.':'.$frame.':'.$num_hits);
-			}
+			my $trans_aa = TranslateCodon($codon);
+			$trans_str = $trans_str.$trans_aa;
 			
-			$num_hits++;
+			push(@TransChars,$trans_aa);
 			
 		    }
 		    
+		    push(@FrameTransStrs,$trans_str);
 		    
-		    # Now we'll integrate the new set of hits according to
-		    # the order of the target region
-		    foreach my $frame_hit_set (@FrameHitsByTargetRegion) {
+		    # For each of our source sequences, we'll get a sorted list of
+		    # hits (by score density), which we'll then organize into groups
+		    # that overlap on the target genome.
+		    my @FrameHitsByTargetRegion;
+		    for (my $source_id=0; $source_id<scalar(@SourceSeqs); $source_id++) {
 			
-			$frame_hit_set =~ /^(\d+)\.\./;
-			my $target_start = $1;
+			my @SourceChars = split(//,$SourceSeqs[$source_id]);
 			
-			my $inserted = 0;
+			my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
+			    = GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
 			
-			for (my $hit_set_id=0; $hit_set_id<scalar(@HitSetsByTargetRegion); $hit_set_id++) {
+			next if (!$num_alis);
+			
+			# NOTE: The "Ranges" here are w.r.t. the sequences provided to
+			#       tblastn (not the full protein / genome).
+			my @ScoreDensities = @{$score_densities_ref};
+			my @TargetRanges = @{$target_ranges_ref};
+			my @SourceRanges = @{$source_ranges_ref};
+
+			# This is a little stupid, but since I added the "sub_range"
+			# size constraints late in the process I want these target
+			# ranges to be relative to the full search range, but not
+			# the absolute (actual) genome coordinates.
+			#
+			# This might be worth improving down the line, but for now
+			# I'll stick with it...
+			for (my $i=0; $i<scalar(@TargetRanges); $i++) {
+			    $TargetRanges[$i] =~ /^(\d+)\.\.(\d+)$/;
+			    $TargetRanges[$i] = ($1+$sub_range_low).'..'.($2+$sub_range_low);
+			}
+			
+			for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
 			    
-			    $HitSetsByTargetRegion[$hit_set_id] =~ /^(\d+)\.\./;
-			    my $hit_target_start = $1;
+			    my $score_density = $ScoreDensities[$hit_id];
+			    my $target_range = $TargetRanges[$hit_id];
+			    my $source_range = $SourceRanges[$hit_id];
 			    
-			    if ($hit_target_start > $target_start) {
+			    push(@AllHits,$score_density.':'.$target_range.'/'.$source_range.'/'.$source_id);
+			    
+			    
+			    my $new_range = 1;
+			    for (my $range_id=0; $range_id<scalar(@FrameHitsByTargetRegion); $range_id++) {
 				
-				splice(@HitSetsByTargetRegion,$hit_set_id,0,$frame_hit_set);
-				$inserted = 1;
-				last;
+				$FrameHitsByTargetRegion[$range_id] =~ /^([^\:]+)\:(\S+)$/;
+				
+				my $group_range = $1;
+				my $group_data  = $2;
+				
+				my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
+				
+				if ($overlap) {
+				    $FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
+				    $new_range = 0;
+				    last;
+				}
 				
 			    }
 			    
+			    if ($new_range) {
+				push(@FrameHitsByTargetRegion,$target_range.':'.$frame.':'.$num_hits);
+			    }
+			    
+			    $num_hits++;
+			    
 			}
 			
-			if (!$inserted) {
-			    push(@HitSetsByTargetRegion,$frame_hit_set);
+		    
+			# Now we'll integrate the new set of hits according to
+			# the order of the target region
+			foreach my $frame_hit_set (@FrameHitsByTargetRegion) {
+			    
+			    $frame_hit_set =~ /^(\d+)\.\./;
+			    my $target_start = $1;
+			    
+			    my $inserted = 0;
+			    
+			    for (my $hit_set_id=0; $hit_set_id<scalar(@HitSetsByTargetRegion); $hit_set_id++) {
+				
+				$HitSetsByTargetRegion[$hit_set_id] =~ /^(\d+)\.\./;
+				my $hit_target_start = $1;
+				
+				if ($hit_target_start > $target_start) {
+				    
+				    splice(@HitSetsByTargetRegion,$hit_set_id,0,$frame_hit_set);
+				    $inserted = 1;
+				    last;
+				    
+				}
+				
+			    }
+			    
+			    if (!$inserted) {
+				push(@HitSetsByTargetRegion,$frame_hit_set);
+			    }
+			    
 			}
 			
 		    }
 		    
 		}
-		
+
 	    }
 
 	    
@@ -2981,18 +2991,18 @@ sub RecordGhostMSAs
 		
 		# Great!  Now that we have our final nucleotide region, let's grab
 		# those nucleotides.
-		$sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		my $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
 		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-		$nucl_inf = OpenSystemCommand($sfetch_cmd);
-		$header_line = <$nucl_inf>;
-		$nucl_seq = '';
+		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
+		my $header_line = <$nucl_inf>;
+		my $nucl_seq = '';
 		while (my $line = <$nucl_inf>) {
 		    $line =~ s/\n|\r//g;
 		    next if (!$line);
 		    $nucl_seq = $nucl_seq.uc($line);
 		}
 		close($nucl_inf);
-		@NuclSeq = split(//,$nucl_seq);
+		my @NuclSeq = split(//,$nucl_seq);
 		
 		
 		# FINALLY TIME TO SKETCH OUR FINAL MSA
