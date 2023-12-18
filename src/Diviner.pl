@@ -433,9 +433,9 @@ sub PrintUsage
     print "\n";
     print "  USAGE :  ./Diviner.pl {OPT.s} [Mirage-Results] [Species-Guide]\n";
     print "\n";
-    print "  OPT.s :  -cpus=[int]\n";
-    print "           -outdirname=[string]\n";
-    print "           -density=[double]\n";
+    print "  OPT.s :  -cpus=[int]           : Number of compute cores\n";
+    print "           -outdirname=[string]  : Name of the output directory\n";
+    print "           -density=[double]     : BLOSUM-62 score density cutoff\n";
     die "\n";
 }
 
@@ -1872,8 +1872,10 @@ sub FindGhostExons
 		    # map this sequence.
 		    # It also can't fully contain an exon, ding-dong!
 		    my $was_prev_used = 0;
+		    my $prev_use_range_ref; # dummy var
 		    foreach my $prev_used_region (@PrevUsedRegions) {
-			$was_prev_used = RangesOverlap($prev_used_region,$nucl_range);
+			($was_prev_used,$prev_use_range_ref)
+			    = RangesOverlap($prev_used_region,$nucl_range);
 			last if ($was_prev_used);
 		    }
 
