@@ -1342,7 +1342,7 @@ sub FindGhostExons
     my @SearchSeqs;
     my @SearchAminoRanges;
     my @TargetSpecies;
-    my @TargetSpeciesRange;
+    my @TargetSpeciesRanges;
     my @SourceSpecies;
     my @MSAExonRanges;
     my @UsedRegions;
@@ -1635,7 +1635,7 @@ sub FindGhostExons
 		    push(@SearchSeqs,lc($search_seq_1));
 		    push(@SearchAminoRanges,$s1_start_amino.'..'.$s1_end_amino);
 		    push(@TargetSpecies,$species2);
-		    push(@TargetSpeciesRange,$left_nucl_bound.'|'.$right_nucl_bound);
+		    push(@TargetSpeciesRanges,$left_nucl_bound.'..'.$right_nucl_bound);
 		    push(@SourceSpecies,$species1);
 		    push(@MSAExonRanges,($start_exon+1).'..'.($end_exon+1));
 		    push(@UsedRegions,$used_regions_str);
@@ -1721,7 +1721,7 @@ sub FindGhostExons
 			    if ($used_regions_str) {
 				$used_regions_str = $used_regions_str.'&'.$region_start.'|'.$region_end;
 			    } else {
-				$used_regions_str = $region_start.'|'.$region_end;
+				$used_regions_str = $region_start.'..'.$region_end;
 			    }
 			}
 			
@@ -1729,7 +1729,7 @@ sub FindGhostExons
 
 		    # Just to make sure we're sticking something into our list
 		    if (!$used_regions_str) {
-			$used_regions_str = '0|0';
+			$used_regions_str = '0..0';
 		    }
 
 
@@ -1737,7 +1737,7 @@ sub FindGhostExons
 		    push(@SearchSeqs,lc($search_seq_2));
 		    push(@SearchAminoRanges,$s2_start_amino.'..'.$s2_end_amino);
 		    push(@TargetSpecies,$species1);
-		    push(@TargetSpeciesRange,$left_nucl_bound.'|'.$right_nucl_bound);
+		    push(@TargetSpeciesRanges,$left_nucl_bound.'..'.$right_nucl_bound);
 		    push(@SourceSpecies,$species2);
 		    push(@MSAExonRanges,($start_exon+1).'..'.($end_exon+1));
 		    push(@UsedRegions,$used_regions_str);
@@ -1781,26 +1781,28 @@ sub FindGhostExons
 	    $revcomp = 1;
 	}
 
-	my @SearchRanges = split(/\|/,$TargetSpeciesRange[$q]);
+	$TargetSpeciesRanges[$q] =~ /^([^\.\.]+)\.\.(\S+)$/;
+	my $target_start = $1;
+	my $target_end = $2;
 
 	# If we're at either terminii of our sequence, pull in an extra 25k (or as
 	# much as we can)
 	my $terminal_search_dist = 25000;
-	if ($SearchRanges[0] =~ /\:(\d+)/) {
+	if ($target_start =~ /\:(\d+)/) {
 	    my $seq_start = $1;
 	    if ($revcomp) {
-		$SearchRanges[0] = Min($seq_start+$terminal_search_dist,$ChrLensBySpecies{$target_species.'|'.$chr});		
+		$target_start = Min($seq_start+$terminal_search_dist,$ChrLensBySpecies{$target_species.'|'.$chr});		
 	    } else {
-		$SearchRanges[0] = Max($seq_start-$terminal_search_dist,1);
+		$target_start = Max($seq_start-$terminal_search_dist,1);
 	    }
 	}
 	
-	if ($SearchRanges[1] =~ /\:(\d+)/) {
+	if ($target_end =~ /\:(\d+)/) {
 	    my $seq_end = $1;
 	    if ($revcomp) {
-		$SearchRanges[1] = Max($seq_end-$terminal_search_dist,1);
+		$target_end = Max($seq_end-$terminal_search_dist,1);
 	    } else {
-		$SearchRanges[1] = Min($seq_end+$terminal_search_dist,$ChrLensBySpecies{$target_species.'|'.$chr});
+		$target_end = Min($seq_end+$terminal_search_dist,$ChrLensBySpecies{$target_species.'|'.$chr});
 	    }
 	}
 
@@ -1819,15 +1821,15 @@ sub FindGhostExons
 	my @HitEVals;
 	my $num_tbn_hits = 0;
 	my $sub_range_size = 100000;
-	for (my $sub_range_low = Min($SearchRanges[0],$SearchRanges[1]);
-	     $sub_range_low < Max($SearchRanges[0],$SearchRanges[1]);
+	for (my $sub_range_low = Min($target_start,$target_end);
+	     $sub_range_low < Max($target_start,$target_end);
 	     $sub_range_low += $sub_range_size) {
 
 	    my $sub_range_high = Min($sub_range_low+$sub_range_size,
-				     Max($SearchRanges[0],$SearchRanges[1]));
+				     Max($target_start,$target_end));
 
 	    my $sub_range = $sub_range_low.'..'.$sub_range_high;
-	    if ($SearchRanges[0] > $SearchRanges[1]) {
+	    if ($target_start > $target_end) {
 		$sub_range = $sub_range_high.'..'.$sub_range_low;
 	    }
 	    
@@ -1910,7 +1912,7 @@ sub FindGhostExons
 	}
 
 	my $target_info = "MSA Ali Region  : $exon_str\n";
-	$target_info = $target_info."    Target Genome   : $target_species ($chr:$SearchRanges[0]..$SearchRanges[1])\n";
+	$target_info = $target_info."    Target Genome   : $target_species ($chr:$target_start..$target_end)\n";
 	$target_info = $target_info."    Source Species  : $source_species (Aminos $SearchAminoRanges[$q])\n";
 	
 	# Is it an especially elusive ghost we're chasing?
@@ -2548,7 +2550,7 @@ sub RecordGhostMSAs
 				my $group_range = $1;
 				my $group_data  = $2;
 				
-				my ($overlap,$overlap_range) = RangesOverlap($group_range,$target_range);
+				my ($overlap, $overlap_range) = RangesOverlap($group_range,$target_range);
 				
 				if ($overlap) {
 				    $FrameHitsByTargetRegion[$range_id] = $overlap_range.':'.$group_data.','.$num_hits;
