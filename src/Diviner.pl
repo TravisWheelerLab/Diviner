@@ -2514,23 +2514,45 @@ sub RecordGhostMSAs
 			
 			next if (!$num_alis);
 			
-			# NOTE: The "Ranges" here are w.r.t. the sequences provided to
-			#       tblastn (not the full protein / genome).
+			# NOTE: The "SourceRanges" here are w.r.t. the segments of the
+			#       source protein fed to tblastn (not the full sequence)
 			my @ScoreDensities = @{$score_densities_ref};
 			my @TargetRanges = @{$target_ranges_ref};
 			my @SourceRanges = @{$source_ranges_ref};
 
-			# This is a little stupid, but since I added the "sub_range"
-			# size constraints late in the process I want these target
-			# ranges to be relative to the full search range, but not
-			# the absolute (actual) genome coordinates.
-			#
-			# This might be worth improving down the line, but for now
-			# I'll stick with it...
 			for (my $i=0; $i<scalar(@TargetRanges); $i++) {
+
 			    $TargetRanges[$i] =~ /^(\d+)\.\.(\d+)$/;
-			    $TargetRanges[$i] = ($1+$sub_range_low).'..'.($2+$sub_range_low);
+			    my $target_start_amino = $1;
+			    my $target_end_amino = $2;
+
+			    my $num_target_nucls = 3 * (1 + $target_end_amino - $target_start_amino);
+
+			    my $target_start_nucl;
+			    my $target_end_nucl;
+			    if ($revcomp) {
+
+				$target_start_nucl  = $sub_range_high;
+				$target_start_nucl -= $target_start_amino * 3;
+				$target_start_nucl -= $frame;
+
+				$target_end_nucl  = $target_start_nucl;
+				$target_end_nucl -= $num_target_nucls - 1;
+
+			    } else {
+
+				$target_start_nucl  = $sub_range_low;
+				$target_start_nucl += $target_start_amino * 3;
+				$target_start_nucl += $frame;
+
+				$target_end_nucl  = $target_start_nucl;
+				$target_end_nucl += $num_target_nucls - 1;
+				
+			    }
+			    
+			    $TargetRanges[$i] = $target_start_nucl.'..'.$target_end_nucl;
 			}
+
 			
 			for (my $hit_id=0; $hit_id<scalar(@ScoreDensities); $hit_id++) {
 			    
@@ -2671,20 +2693,9 @@ sub RecordGhostMSAs
 		}
 		
 
-		# What are the actual nucleotide bounds of our putative coding region?
-		my $num_trans_aminos = abs($target_start-$target_end)+1;
-		my $true_nucl_start = $search_start;
-		my $true_nucl_end;
-		if ($revcomp) {
-		    $true_nucl_start -= $frame_num + (3 * $target_start);
-		    $true_nucl_end = $true_nucl_start+1 - (3 * $num_trans_aminos);
-		} else {
-		    $true_nucl_start += $frame_num + (3 * $target_start);
-		    $true_nucl_end = $true_nucl_start-1 + (3 * $num_trans_aminos);
-		}
-
-		# Pull in the coding nucleotides and translate them
-		my $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		# Pull in the nucleotides corresponding to the region of the genome
+		# where we think we've found an exon
+		my $sfetch_cmd = $sfetch.' -range '.$target_start.'..'.$target_end;
 		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
 		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
 		my $header_line = <$nucl_inf>;
@@ -2697,7 +2708,7 @@ sub RecordGhostMSAs
 		close($nucl_inf);
 		my @NuclSeq = split(//,$nucl_seq);
 
-		# I SAID, "AND TRANSLATE THEM!"
+		# You gotta translate 'em, dude!
 		my @TransTargetChars;
 		for (my $i=0; $i<scalar(@NuclSeq); $i+=3) {
 		    push(@TransTargetChars,TranslateCodon($NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2]));
@@ -2735,8 +2746,8 @@ sub RecordGhostMSAs
 		    if ($target_char !~ /[A-Z]/) {
 
 			$start_col++;
-			if ($revcomp) { $true_nucl_start -= 3; }
-			else          { $true_nucl_start += 3; }
+			if ($revcomp) { $target_start -= 3; }
+			else          { $target_start += 3; }
 
 			for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 			    if ($Col[$match_id+1] =~ /[A-Za-z]/) {
@@ -2758,8 +2769,8 @@ sub RecordGhostMSAs
 		    last if (!$trim_it);
 		    
 		    $start_col++;
-		    if ($revcomp) { $true_nucl_start -= 3; }
-		    else          { $true_nucl_start += 3; }
+		    if ($revcomp) { $target_start -= 3; }
+		    else          { $target_start += 3; }
 		    
 		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 			if ($Col[$match_id+1] =~ /[A-Za-z]/) {
@@ -2781,8 +2792,8 @@ sub RecordGhostMSAs
 		    if ($target_char !~ /[A-Z]/) {
 
 			$end_col--;
-			if ($revcomp) { $true_nucl_end += 3; }
-			else          { $true_nucl_end -= 3; }
+			if ($revcomp) { $target_end += 3; }
+			else          { $target_end -= 3; }
 
 			for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 			    if ($Col[$match_id+1] =~ /[A-Za-z]/) {
@@ -2804,8 +2815,8 @@ sub RecordGhostMSAs
 		    last if (!$trim_it);
 		    
 		    $end_col--;
-		    if ($revcomp) { $true_nucl_end += 3; }
-		    else          { $true_nucl_end -= 3; }
+		    if ($revcomp) { $target_end += 3; }
+		    else          { $target_end -= 3; }
 		    
 		    for (my $match_id=0; $match_id<$num_matched; $match_id++) {
 			if ($Col[$match_id+1] =~ /[A-Za-z]/) {
@@ -2989,25 +3000,23 @@ sub RecordGhostMSAs
 		close($MapCoordFile);
 		
 
-		# Before we extend out, record the true start of the translated sequence
-		my $translation_start = $true_nucl_start;
-		my $translation_end   = $true_nucl_end;
-		
-		# The last thing we're going to do is extend out 60 nucls on each side
+		# The last thing we're going to do is extend out 15 nucls on each side
 		# of the alignment...
-		my $nucl_ext_len = 60;
+		my $nucl_ext_len = 15;
+		my $ext_start = $target_start;
+		my $ext_end   = $target_end;
 		if ($revcomp) {
-		    $true_nucl_start += $nucl_ext_len;
-		    $true_nucl_end   -= $nucl_ext_len;
+		    $ext_start += $nucl_ext_len;
+		    $ext_end   -= $nucl_ext_len;
 		} else {
-		    $true_nucl_start -= $nucl_ext_len;
-		    $true_nucl_end   += $nucl_ext_len;
+		    $ext_start -= $nucl_ext_len;
+		    $ext_end   += $nucl_ext_len;
 		}
 		
 		
 		# Great!  Now that we have our final nucleotide region, let's grab
 		# those nucleotides.
-		$sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		$sfetch_cmd = $sfetch.' -range '.$ext_start.'..'.$ext_end;
 		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
 		$nucl_inf = OpenSystemCommand($sfetch_cmd);
 		$header_line = <$nucl_inf>;
@@ -3206,16 +3215,16 @@ sub RecordGhostMSAs
 		# Metadata item 1: Target sequence info.
 		my $meta_str = "  Target : $target_species $chr";
 		$meta_str    = $meta_str.'[revcomp]' if ($revcomp);
-		$meta_str    = $meta_str.":$translation_start..$translation_end\n";
+		$meta_str    = $meta_str.":$target_start..$target_end\n";
 
 
 		# Metadata item 2: Does this overlap with any annotated exons?
-		if (IsGTFAnnotated($target_species,$chr,$translation_start,$translation_end)) {
+		if (IsGTFAnnotated($target_species,$chr,$target_start,$target_end)) {
 		    $meta_str = $meta_str."         : Overlaps with GTF entry\n";
 		} else {
 		    $meta_str = $meta_str."         : Novel exon (no GTF overlaps)\n";
 		}
-
+		
 
 		# Metadata item 3: Where in the species MSA are these source sequences?
 		$meta_str = $meta_str."  Source : Species-level MSA exon";
