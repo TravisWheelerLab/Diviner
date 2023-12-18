@@ -2452,8 +2452,7 @@ sub RecordGhostMSAs
 	    # Instead of picking an individual reading frame to work with, we'll
 	    # track down any regions that have a score density >2 and take note of
 	    # which portions of which source sequences are associated with those
-	    # regions.	    
-	    my @FrameTransStrs;
+	    # regions.
 	    my @AllHits;
 	    my @HitSetsByTargetRegion;
 	    my $num_hits = 0;
@@ -2490,7 +2489,6 @@ sub RecordGhostMSAs
 		
 		    # Pull in this reading frame
 		    my $frame_str = '';
-		    my $trans_str = '';
 		    my @TransChars;
 		    for (my $i=$frame; $i+2<scalar(@NuclSeq); $i+=3) {
 			
@@ -2498,14 +2496,11 @@ sub RecordGhostMSAs
 			$frame_str = $frame_str.$codon;
 			
 			my $trans_aa = TranslateCodon($codon);
-			$trans_str = $trans_str.$trans_aa;
-			
 			push(@TransChars,$trans_aa);
 			
 		    }
-		    
-		    push(@FrameTransStrs,$trans_str);
-		    
+
+
 		    # For each of our source sequences, we'll get a sorted list of
 		    # hits (by score density), which we'll then organize into groups
 		    # that overlap on the target genome.
@@ -2648,7 +2643,7 @@ sub RecordGhostMSAs
 
 		}
 
-
+		
 		# Start building the multiple sequence alignment by priming
 		# with the first of the source sequences
 		my $source_id = $HitSourceIDs[0];
@@ -2676,29 +2671,44 @@ sub RecordGhostMSAs
 		}
 		
 
-		# We align the target sequence last so that it's (perhaps) more of an
-		# approximation of aligning to an "exon family profile"
-		my @AllTargetChars = split(//,$FrameTransStrs[$frame_num]);
-		my @TargetRangeChars;
-		foreach my $char_id ($target_start..$target_end) {
-		    push(@TargetRangeChars,$AllTargetChars[$char_id]);
-		}
-		
-		my $amino_msa_ref = MultiAminoSeqAli(\@TargetRangeChars,\@AminoMSA);
-		@AminoMSA = @{$amino_msa_ref};
-		my $amino_msa_len = scalar(@AminoMSA);
-		
-		
 		# What are the actual nucleotide bounds of our putative coding region?
+		my $num_trans_aminos = abs($target_start-$target_end)+1;
 		my $true_nucl_start = $search_start;
 		my $true_nucl_end;
 		if ($revcomp) {
 		    $true_nucl_start -= $frame_num + (3 * $target_start);
-		    $true_nucl_end = $true_nucl_start+1 - (3 * scalar(@TargetRangeChars));
+		    $true_nucl_end = $true_nucl_start+1 - (3 * $num_trans_aminos);
 		} else {
 		    $true_nucl_start += $frame_num + (3 * $target_start);
-		    $true_nucl_end = $true_nucl_start-1 + (3 * scalar(@TargetRangeChars));
+		    $true_nucl_end = $true_nucl_start-1 + (3 * $num_trans_aminos);
 		}
+
+		# Pull in the coding nucleotides and translate them
+		my $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
+		my $header_line = <$nucl_inf>;
+		my $nucl_seq = '';
+		while (my $line = <$nucl_inf>) {
+		    $line =~ s/\n|\r//g;
+		    next if (!$line);
+		    $nucl_seq = $nucl_seq.uc($line);
+		}
+		close($nucl_inf);
+		my @NuclSeq = split(//,$nucl_seq);
+
+		# I SAID, "AND TRANSLATE THEM!"
+		my @TransTargetChars;
+		for (my $i=0; $i<scalar(@NuclSeq); $i+=3) {
+		    push(@TransTargetChars,TranslateCodon($NuclSeq[$i].$NuclSeq[$i+1].$NuclSeq[$i+2]));
+		}
+		
+		
+		# We align the target sequence last so that it's (perhaps) more of an
+		# approximation of aligning to an "exon family profile"				
+		my $amino_msa_ref = MultiAminoSeqAli(\@TransTargetChars,\@AminoMSA);
+		@AminoMSA = @{$amino_msa_ref};
+		my $amino_msa_len = scalar(@AminoMSA);
 		
 		
 		# Next, we'll eat into the MSA from each end until we hit a match column
@@ -2997,18 +3007,18 @@ sub RecordGhostMSAs
 		
 		# Great!  Now that we have our final nucleotide region, let's grab
 		# those nucleotides.
-		my $sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
+		$sfetch_cmd = $sfetch.' -range '.$true_nucl_start.'..'.$true_nucl_end;
 		$sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
-		my $nucl_inf = OpenSystemCommand($sfetch_cmd);
-		my $header_line = <$nucl_inf>;
-		my $nucl_seq = '';
+		$nucl_inf = OpenSystemCommand($sfetch_cmd);
+		$header_line = <$nucl_inf>;
+		$nucl_seq = '';
 		while (my $line = <$nucl_inf>) {
 		    $line =~ s/\n|\r//g;
 		    next if (!$line);
 		    $nucl_seq = $nucl_seq.uc($line);
 		}
 		close($nucl_inf);
-		my @NuclSeq = split(//,$nucl_seq);
+		@NuclSeq = split(//,$nucl_seq);
 		
 		
 		# FINALLY TIME TO SKETCH OUR FINAL MSA
