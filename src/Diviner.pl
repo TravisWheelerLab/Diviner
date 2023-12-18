@@ -3000,9 +3000,9 @@ sub RecordGhostMSAs
 		close($MapCoordFile);
 		
 
-		# The last thing we're going to do is extend out 15 nucls on each side
+		# The last thing we're going to do is extend out 60 nucls on each side
 		# of the alignment...
-		my $nucl_ext_len = 15;
+		my $nucl_ext_len = 60;
 		my $ext_start = $target_start;
 		my $ext_end   = $target_end;
 		if ($revcomp) {
