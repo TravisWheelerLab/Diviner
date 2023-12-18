@@ -224,12 +224,14 @@ my $bedfilesdir = CreateDirectory($outdirname.'BED-Files');
 InitProgressVars($outdirname.'.progress',$num_cpus,scalar(@GeneList));
 
 
-# We'll read in the species' GTF info so we can determine whether
-# any ghost exons we hit on are known coding regions (and not just
-# members of proteoforms that are missing from our database).
-my $micro_gtfs_dirname = CreateDirectory($outdirname.'Temp-GTF-Data');
-foreach my $species (keys %SpeciesToGTF) {
-    SplitGTFIntoChrs($species,$SpeciesToGTF{$species});
+# GTFs will let us know if the exons we uncover are known coding regions
+# (as opposed to known exons that are simply missing from our database).
+my $micro_gtfs_dirname = 0;
+if (scalar(@GeneList) > 10) { # Don't break up the GTF for small inputs
+    $micro_gtfs_dirname = CreateDirectory($outdirname.'Temp-GTF-Data');
+    foreach my $species (keys %SpeciesToGTF) {
+	SplitGTFIntoChrs($species,$SpeciesToGTF{$species});
+    }
 }
     
 
@@ -391,7 +393,7 @@ GetMapSummaryStats();
 
 
 # Clear out that stinky ol' GTF data directory!
-RunSystemCommand("rm -rf \"$micro_gtfs_dirname\"");
+RunSystemCommand("rm -rf \"$micro_gtfs_dirname\"") if (-d $micro_gtfs_dirname);
 
 
 # Additionally, we'll write out the (easier on the eyes) file that lists
@@ -1719,7 +1721,7 @@ sub FindGhostExons
 
 			if ($region_start && $region_end) {
 			    if ($used_regions_str) {
-				$used_regions_str = $used_regions_str.'&'.$region_start.'|'.$region_end;
+				$used_regions_str = $used_regions_str.'&'.$region_start.'..'.$region_end;
 			    } else {
 				$used_regions_str = $region_start.'..'.$region_end;
 			    }
@@ -4139,31 +4141,66 @@ sub IsGTFAnnotated
 
     my $strand = '+';
     $strand = '-' if ($start > $end);
-
+    
     my $range = $start.'..'.$end;
 
+    # We'll either be scanning the full GTF (small inputs), or looking
+    # at the narrow range of the hit in the appropriate 'micro_gtf' file.
     my $gtf_overlap = 0;
-    my $full_range;
-    foreach my $hash_key (CoordsToGTFHashKeys($start,$end,$chr,$strand)) {
+    my $full_range; # dummy var
+    if (!$micro_gtfs_dirname) {
 
-	my $micro_gtf_fname = GTFHashKeyToFname($species,$hash_key);
-	next if (!(-e $micro_gtf_fname));
-
-	my $MicroGTF = OpenInputFile($micro_gtf_fname);
-	while (my $line = <$MicroGTF>) {
-	    if ($line =~ /^(\d+\.\.\d+)/) {
-
-		($gtf_overlap,$full_range) = RangesOverlap($range,$1);
-		last if ($gtf_overlap);
-
-	    }
-	}
-	close($MicroGTF);
-
-	last if ($gtf_overlap);
+	last if (!$SpeciesToGTF{$species});
 	
-    }
+	my $GTF = OpenInputFile($SpeciesToGTF{$species});
+	while (my $line = <$GTF>) {
 
+	    next if ($line !~ /^\s*(\S+)\s+\S+\s+(\S+)\s+(\d+)\s+(\d+)\s+\S+\s+(\S+)/);
+	    
+	    my $gtf_chr    = $1;
+	    my $gtf_type   = lc($2);
+	    my $gtf_start  = $3;
+	    my $gtf_end    = $4;
+	    my $gtf_strand = $5;
+	    
+	    if ($gtf_type ne 'cds' && $gtf_type ne 'exon')  { next; }
+	    if ($gtf_chr ne $chr || $gtf_strand ne $strand) { next; }
+
+	    my $gtf_range = $gtf_start.'..'.$gtf_end;
+	    if ($strand eq '-') {
+		$gtf_range = $gtf_end.'..'.$gtf_start;
+	    }
+	    
+	    ($gtf_overlap,$full_range) = RangesOverlap($range,$gtf_range);
+	    last if ($gtf_overlap);
+	    
+	}
+	close($GTF);
+
+    } else {
+    
+	foreach my $hash_key (CoordsToGTFHashKeys($start,$end,$chr,$strand)) {
+	    
+	    my $micro_gtf_fname = GTFHashKeyToFname($species,$hash_key);
+	    next if (!(-e $micro_gtf_fname));
+	    
+	    my $MicroGTF = OpenInputFile($micro_gtf_fname);
+	    while (my $line = <$MicroGTF>) {
+		if ($line =~ /^(\d+\.\.\d+)/) {
+		    
+		    ($gtf_overlap,$full_range) = RangesOverlap($range,$1);
+		    last if ($gtf_overlap);
+		    
+		}
+	    }
+	    close($MicroGTF);
+	    
+	    last if ($gtf_overlap);
+	    
+	}
+
+    }
+	
     return $gtf_overlap;
     
 }
