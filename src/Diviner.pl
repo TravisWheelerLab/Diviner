@@ -3838,8 +3838,8 @@ sub GetMapSummaryStats
     my @FullHitList;
 
     my $GenesDir = OpenDirectory($outgenesdir);
-    foreach my $gene ($GenesDir) {
-
+    while (my $gene = readdir($GenesDir)) {
+	
 	$gene =~ s/\/$//;
 
 	next if ($gene =~ /^\./);
