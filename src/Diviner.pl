@@ -31,7 +31,7 @@ sub GatherBestLocalAlis;
 sub LocalAlign;
 sub GetB62Score;
 sub MultiAminoSeqAli;
-sub GetMapSummaryStats;
+sub GenBEDOutFiles;
 sub CollapseAndCountOverlaps;
 sub RangesOverlap;
 sub IsGTFAnnotated;
@@ -387,9 +387,8 @@ if ($total_ghost_exons == 0) {
 }
 
 
-# We'll write out summary statistics for the full collection of genes
-# that had hits
-GetMapSummaryStats();
+# We'll aggregate our outputs into .bed files
+GenBEDOutFiles();
 
 
 # Clear out that stinky ol' GTF data directory!
@@ -3826,184 +3825,90 @@ sub RecordFrameConflict
 
 ###############################################################
 #
-#  Function:  GetMapSummaryStats
+#  Function:  GenBEDOutFiles
 #
-sub GetMapSummaryStats
+sub GenBEDOutFiles
 {
 
-    my $outf = OpenOutputFile($outdirname.'Search-Summary.out');
-
-    my %TargetSpeciesToSuggested;
-    my %TargetSpeciesToAnnotated;
-    my @FullHitList;
-
+    # Make a list of all the genes where we had alignment outputs
     my $GenesDir = OpenDirectory($outgenesdir);
+    my @GeneDirsList;
     while (my $gene = readdir($GenesDir)) {
 	
 	$gene =~ s/\/$//;
 
 	next if ($gene =~ /^\./);
 	next if (!(-d $outgenesdir.$gene.'/alignments/'));
-	
-	my $infname = $outgenesdir.$gene.'/search.out';
-	my $inf = OpenInputFile($infname);
-	
-	print $outf "\n  $gene\n";
-	
-	# We'll want to know how many ranges had mappings for this gene
-	# (e.g., distinct blocks in the MSA).
-	my $num_mapped_ranges = 0;
-	my %MapsByExonRange;
-	while (my $line = <$inf>) {
-	    
-	    # The sure-fire sign of a good time!
-	    if ($line =~ /\[\+\]/) {
-		
-		# Where in the MSA is this mapping from?
-		$line = <$inf>;
-		$line =~ /Exons? (\S+)/;
-		my $exon_range = $1;
-		
-		# Which genome was being searched against?
-		$line = <$inf>;
-		$line =~ /\: (\S+) \((\S+)\)\s*$/;
-		my $target_species = $1;
-		my $target_region = $2;
-		
-		# Which species provided the protein sequence?
-		$line = <$inf>;
-		$line =~ /\: (\S+)/;
-		my $source_species = $1;
-		
-		# What was the protein sequence we were searching with?
-		# Note that mapped residues are uppercase, so we can
-		#   compute the percentage of the search sequence that
-		#   was mapped.
-		$line = <$inf>;
-		$line =~ /\: (\S+)/;
-		my $num_mapped_chars = 0;
-		my $num_unmapped_chars = 0;
-		foreach my $char (split(//,$line)) {
-		    if ($char =~ /[A-Z]/) { $num_mapped_chars++;   }
-		    else                  { $num_unmapped_chars++; }
-		}
-		my $search_seq_len = $num_mapped_chars + $num_unmapped_chars;
-		my $pct_seq_mapped = int(1000.0 * $num_mapped_chars / $search_seq_len) / 10.0;
-		
-		# tblastn hit count? (this plays into the final part of our hash val)
-		$line = <$inf>;
-		$line =~ /\: (\d+)/;
-		my $num_hits = $1;
-		
-		# We'll store this data in a hash, which we can then sort by
-		# MSA position (further broken down by target species).
-		my $hash_val = $target_species.'|'.$target_region.'|'.$source_species;
-		$hash_val = $hash_val.'|'.$search_seq_len.'|'.$pct_seq_mapped;
-		
-		# Add the list of hit regions, too
-		for (my $i=0; $i<$num_hits; $i++) {
-		    $line = <$inf>;
-		    $line =~ /mapped to \S+ \S+\:(\d+\.\.\d+)/;
-		    my $map_range = $1;
-		    $hash_val = $hash_val.'|'.$map_range;
-		}
-		
-		if ($MapsByExonRange{$exon_range}) {
-		    $MapsByExonRange{$exon_range} = $MapsByExonRange{$exon_range}.'&'.$hash_val;
-		} else {
-		    $MapsByExonRange{$exon_range} = $hash_val;
-		    $num_mapped_ranges++;
-		}
-		
-	    }
-	    
-	}
-	
-	close($inf);
-	
-	# Print out the number of mapped ranges 
-	print $outf "  $num_mapped_ranges exon range";
-	print $outf "s" if ($num_mapped_ranges > 1);
-	print $outf " in MSA produced ghost exon mappings\n";
-	
-	# We now have all the info. we could need to grab from the file,
-	# so it's time to organize it!
-	foreach my $exon_range (sort keys %MapsByExonRange) {
-	    
-	    my %MapsByTargetSpecies;
-	    my $num_targets_in_range = 0;
-	    foreach my $map_in_range (split(/\&/,$MapsByExonRange{$exon_range})) {
 
-		$map_in_range =~ /^([^\|]+)\|/;
-		my $species = $1;
-		
-		if ($MapsByTargetSpecies{$species}) {
-		    $MapsByTargetSpecies{$species} = $MapsByTargetSpecies{$species}.'&'.$map_in_range;
-		} else {
-		    $MapsByTargetSpecies{$species} = $map_in_range;
-		    $num_targets_in_range++;
-		}
-		
-	    }
-	    
-	    # Announce this range
-	    print $outf "\n    > MSA exon";
-	    print $outf "s" if ($exon_range =~ /\.\./);
-	    print $outf " $exon_range: Found mappings to $num_targets_in_range genome";
-	    print $outf "s" if ($num_targets_in_range > 1);
-	    print $outf "\n";
-	    
-	    # We can now consider searches within this exon range by order
-	    # of target species.
-	    foreach my $target_species (sort keys %MapsByTargetSpecies) {
+	push(@GeneDirsList,$outgenesdir.$gene);
 
-		my @MapsToSpecies = split(/\&/,$MapsByTargetSpecies{$target_species});
-		
-		# We'll go ahead and grab the region of the target species' genome that
-		# was mapped to (should be consistent...)
-		$MapsToSpecies[0] =~ /^[^\|]+\|([^\|]+)\|/;
-		my $target_species_region = $1;
+    }
+    closedir($GenesDir);
 
-		# Write to this species' .bed file roight quicke!
-		open(my $TargetBed,'>>',$bedfilesdir.$target_species.'.bed');
+    
+    # Now we can run through our genes in alphabetical order!
+    foreach my $gene_dirname (sort @GeneDirsList) {
 
-		$target_species_region =~ /([^\:]+)\:(\d+)\.\.(\d+)/;
+	$gene_dirname =~ /\/([^\/]+)$/;
+	my $gene = $1;
+
+	my $out_alis_dirname = $gene_dirname.'/alignments/';
+	my $OutAlisDir = OpenDirectory($out_alis_dirname);
+	while (my $target_filename = readdir($OutAlisDir)) {
+
+	    next if ($target_filename !~ /^(\S+)\.MSAs\.out/);
+	    my $target_species = $1;
+
+	    $target_filename = $out_alis_dirname.$target_filename;
+
+	    open(my $BEDFile,'>>',$bedfilesdir.$target_species.'.bed')
+		|| die "\n  ERROR:  Failed to open .bed file for species '$target_species'\n\n";
+	    my $TargetFile = OpenInputFile($target_filename);
+	    while (my $line = <$TargetFile>) {
+
+		next if ($line !~ /Target\s+\:\s+\S+\s+(\S+)\:(\d+)\.\.(\d+)\s*$/);
 		my $chr = $1;
 		my $start = $2;
 		my $end = $3;
-
 		my $strand = '+';
-		if ($chr =~ /\[revcomp\]/) {
-		    $chr =~ s/\[revcomp\]//;
-		    my $tmp = $start;
-		    $start = $end;
-		    $end = $tmp;
+
+		if ($end < $start) {
+		    $chr =~ s/\[revcomp\]//g;
+		    my $tmp = $end;
+		    $end = $start;
+		    $start = $tmp;
 		    $strand = '-';
 		}
-		
-		my $bed_name = $gene.'-exon';
-		$bed_name = $bed_name.'s' if ($exon_range =~ /\.\./);
-		$bed_name = $bed_name.'_'.$exon_range;
 
-		print $TargetBed "$chr $start $end $bed_name 0 $strand\n";
-		close($TargetBed);
+		$line = <$TargetFile>; # Novelty
+		$line = <$TargetFile>; # Source exons
 
-		# Bed time is over -- back to work!
-		my $num_maps_to_species = scalar(@MapsToSpecies);
-		
-		# As is customary in this region, we must declare the number of mappings
-		# made to this species' genome.
-		print $outf "\n        $num_maps_to_species mapping";
-		print $outf "s" if ($num_maps_to_species > 1);
-		print $outf " to target species $target_species ($target_species_region)\n";
+		my $exon_range;
+		if ($line =~ /MSA exons (\d+\.\.\d+)/) {
+		    $exon_range = $gene.'-exons_'.$1;
+		} elsif ($line =~ /MSA exon (\d+)/) {
+		    $exon_range = $gene.'-exon_'.$1;
+		}
+
+		my $best_pct_id = 0.0;
+		$line = <$TargetFile>;
+		while ($line =~ /\/ (\S+)\% alignment identity/) {
+		    my $next_pct_id = (0.0 + $1) / 100.0;
+		    if ($next_pct_id > $best_pct_id) {
+			$best_pct_id = $next_pct_id;
+		    }
+		    $line = <$TargetFile>;
+		}
+
+		print $BEDFile "$chr $start $end $exon_range $best_pct_id $strand\n";
 		
 	    }
+	    close($BEDFile);
 	    
 	}
+	closedir($OutAlisDir);
 	
     }
-    closedir($GenesDir);
-    close($outf);
 
 }
 
