@@ -3897,6 +3897,7 @@ sub GenBEDOutFiles
 		    if ($next_pct_id > $best_pct_id) {
 			$best_pct_id = $next_pct_id;
 		    }
+		    $line = <$TargetFile>;
 		}
 
 		print $BEDFile "$chr $start $end $exon_range $best_pct_id $strand\n";
