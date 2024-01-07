@@ -1349,10 +1349,11 @@ sub FindGhostExons
     for (my $s1=0; $s1<$num_species-1; $s1++) {
 	for (my $s2=$s1+1; $s2<$num_species; $s2++) {
 
-	    # -1 -> Bad
+	    # <0 -> Bad
 	    #  0 -> Unused
 	    #  1 -> Good
 	    my @ExonAliQuality;
+	    my @IsMicroExon;
 	    my @ExonS1Query;
 	    my @ExonS2Query;
 	    my @ExonS1FirstIndex;
@@ -1366,6 +1367,7 @@ sub FindGhostExons
 		# Set all of our arrays to their default value for
 		# this exon
 		$ExonAliQuality[$exon_id] = 0;
+		$IsMicroExon[$exon_id] = 0;
 		$ExonS1Query[$exon_id] = '';
 		$ExonS2Query[$exon_id] = '';
 		$ExonS1FirstIndex[$exon_id] = 0;
@@ -1433,6 +1435,9 @@ sub FindGhostExons
 		# If each species only had gaps, there's nothing to do here
 		next if ($num_content_cols == 0);
 
+		# We want to be aware if this is a micro-exon
+		$IsMicroExon[$exon_id] = 1 if ($num_content_cols <= 3);
+
 		# Overall alignment percent identity
 		my $match_pct_id = 0.0; # Of columns where we have two aminos aligned, how many are identical?
 		if ($num_match_cols+$num_mismatch_cols > 0) {
@@ -1482,7 +1487,9 @@ sub FindGhostExons
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS1LastIndex[$scanner_exon_id]) {
+			if ($ExonAliQuality[$scanner_exon_id] == 1
+			    && $ExonS1LastIndex[$scanner_exon_id]
+			    && !$IsMicroExon[$scanner_exon_id]) {
 			    $upstream_nucl_s1 = $MapMSA[$s1][$ExonS1LastIndex[$scanner_exon_id]];
 			    last;
 			}
@@ -1491,7 +1498,9 @@ sub FindGhostExons
 		    
 		    $scanner_exon_id = $exon_id+1;
 		    while ($scanner_exon_id < $num_exons) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS1FirstIndex[$scanner_exon_id]) {
+			if ($ExonAliQuality[$scanner_exon_id] == 1
+			    && $ExonS1FirstIndex[$scanner_exon_id]
+			    && !$IsMicroExon[$scanner_exon_id]) {
 			    $downstream_nucl_s1 = $MapMSA[$s1][$ExonS1FirstIndex[$scanner_exon_id]];
 			    last;
 			}
@@ -1527,7 +1536,9 @@ sub FindGhostExons
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS2LastIndex[$scanner_exon_id]) {
+			if ($ExonAliQuality[$scanner_exon_id] == 1
+			    && $ExonS2LastIndex[$scanner_exon_id]
+			    && !$IsMicroExon[$scanner_exon_id]) {
 			    $upstream_nucl_s2 = $MapMSA[$s2][$ExonS2LastIndex[$scanner_exon_id]];
 			    last;
 			}
@@ -1536,7 +1547,9 @@ sub FindGhostExons
 		    
 		    $scanner_exon_id = $exon_id+1;
 		    while ($scanner_exon_id < $num_exons) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS2FirstIndex[$scanner_exon_id]) {
+			if ($ExonAliQuality[$scanner_exon_id] == 1
+			    && $ExonS2FirstIndex[$scanner_exon_id]
+			    && !$IsMicroExon[$scanner_exon_id]) {
 			    $downstream_nucl_s2 = $MapMSA[$s2][$ExonS2FirstIndex[$scanner_exon_id]];
 			    last;
 			}
