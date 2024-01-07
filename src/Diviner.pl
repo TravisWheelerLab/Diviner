@@ -1435,7 +1435,7 @@ sub FindGhostExons
 
 		# Overall alignment percent identity
 		my $match_pct_id = 0.0; # Of columns where we have two aminos aligned, how many are identical?
-		if ($num_mismatch_cols) {
+		if ($num_match_cols+$num_mismatch_cols > 0) {
 		    $match_pct_id = (100.0 * $num_match_cols / ($num_mismatch_cols+$num_match_cols)) / 100.0;
 		}
 
