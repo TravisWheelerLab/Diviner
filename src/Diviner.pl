@@ -2255,7 +2255,7 @@ sub RecordGhostMSAs
 	#   an overlapping region of the "target" genome
 	#
 	# We'll write out a file with our MSA visualizations for each species
-	my $outfname = $gene_ali_dir.$target_species.'.MSAs.out';
+	my $outfname = $gene_ali_dir.$target_species.'.'.$gene.'.out';
 	my $outf = OpenOutputFile($outfname);
 	for (my $i=0; $i<$num_exons; $i++) {
 	    
@@ -3725,7 +3725,7 @@ sub GenBEDOutFiles
 	my $OutAlisDir = OpenDirectory($out_alis_dirname);
 	while (my $target_filename = readdir($OutAlisDir)) {
 
-	    next if ($target_filename !~ /^(\S+)\.MSAs\.out/);
+	    next if ($target_filename !~ /^(\S+)\.$gene\.out/);
 	    my $target_species = $1;
 
 	    $target_filename = $out_alis_dirname.$target_filename;
