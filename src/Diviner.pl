@@ -1476,10 +1476,11 @@ sub FindGhostExons
 		# from species 2?
 		if (length($ExonS2Query[$exon_id]) >= $min_search_aminos) {
 
+		    my $query_amino_seq = $ExonS2Query[$exon_id];
+
 		    # Species 2 query amino acid range
 		    my $query_start_amino_index = $IndexMSA[$s2][$ExonS2FirstIndex[$exon_id]];
 		    my $query_end_amino_index = $IndexMSA[$s2][$ExonS2LastIndex[$exon_id]];
-		    my $s2_amino_range = $query_start_amino_index.'..'.$query_end_amino_index;
 
 		    # Species 1 target nucleotide range
 		    my $upstream_nucl_s1   = '[start-of-coding-region:'.$MapMSA[$s1][$ExonS1FirstIndex[$exon_id]].']';
@@ -1487,30 +1488,57 @@ sub FindGhostExons
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1
-			    && $ExonS1LastIndex[$scanner_exon_id]
-			    && !$IsMicroExon[$scanner_exon_id]) {
+
+			# Slurp in micro-exons
+			if ($IsMicroExon[$scanner_exon_id]) {
+			    if (length($ExonS2Query[$scanner_exon_id]) > 0) {
+
+				$query_amino_seq = $ExonS2Query[$scanner_exon_id].$query_amino_seq;
+				$query_start_amino_index = $IndexMSA[$s2][$ExonS2FirstIndex[$scanner_exon_id]];
+			    }
+			    $scanner_exon_id--;
+			    next;
+			}
+			
+			# Have we found an exon to define our upstream nucl. bound?
+			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS1LastIndex[$scanner_exon_id]) {
 			    $upstream_nucl_s1 = $MapMSA[$s1][$ExonS1LastIndex[$scanner_exon_id]];
 			    last;
 			}
+			
 			$scanner_exon_id--;
+
 		    }
 		    
 		    $scanner_exon_id = $exon_id+1;
 		    while ($scanner_exon_id < $num_exons) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1
-			    && $ExonS1FirstIndex[$scanner_exon_id]
-			    && !$IsMicroExon[$scanner_exon_id]) {
+			
+			# Slurp in micro-exons
+			if ($IsMicroExon[$scanner_exon_id]) {
+			    if (length($ExonS2Query[$scanner_exon_id]) > 0) {
+
+				$query_amino_seq = $query_amino_seq.$ExonS2Query[$scanner_exon_id];
+				$query_end_amino_index = $IndexMSA[$s2][$ExonS2LastIndex[$scanner_exon_id]];
+			    }
+			    $scanner_exon_id++;
+			    next;
+			}
+			
+			# Have we found an exon to define our downstream nucl. bound?
+			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS1FirstIndex[$scanner_exon_id]) {
 			    $downstream_nucl_s1 = $MapMSA[$s1][$ExonS1FirstIndex[$scanner_exon_id]];
 			    last;
 			}
+
 			$scanner_exon_id++;
+			
 		    }
 		    
+		    my $s2_amino_range = $query_start_amino_index.'..'.$query_end_amino_index;
 		    my $s1_nucl_range = $upstream_nucl_s1.'..'.$downstream_nucl_s1;
 
 		    # Scream and shout about it, why don't'cha?!
-		    push(@QuerySeqs,lc($ExonS2Query[$exon_id]));
+		    push(@QuerySeqs,lc($query_amino_seq));
 		    push(@QuerySpecies,$SpeciesNames[$s2]);
 		    push(@QueryAminoRanges,$s2_amino_range);
 		    push(@TargetSpecies,$SpeciesNames[$s1]);
@@ -1525,10 +1553,11 @@ sub FindGhostExons
 		# from species 2?
 		if (length($ExonS1Query[$exon_id]) >= $min_search_aminos) {
 			
+		    my $query_amino_seq = $ExonS1Query[$exon_id];
+
 		    # Species 1 query amino acid range
 		    my $query_start_amino_index = $IndexMSA[$s1][$ExonS1FirstIndex[$exon_id]];
 		    my $query_end_amino_index = $IndexMSA[$s1][$ExonS1LastIndex[$exon_id]];
-		    my $s1_amino_range = $query_start_amino_index.'..'.$query_end_amino_index;
 		    
 		    # Species 2 target nucleotide range
 		    my $upstream_nucl_s2   = '[start-of-coding-region:'.$MapMSA[$s2][$ExonS2FirstIndex[$exon_id]].']';
@@ -1536,30 +1565,57 @@ sub FindGhostExons
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1
-			    && $ExonS2LastIndex[$scanner_exon_id]
-			    && !$IsMicroExon[$scanner_exon_id]) {
+
+			# Slurp in micro-exons
+			if ($IsMicroExon[$scanner_exon_id]) {
+			    if (length($ExonS1Query[$scanner_exon_id]) > 0) {
+
+				$query_amino_seq = $ExonS1Query[$scanner_exon_id].$query_amino_seq;
+				$query_start_amino_index = $IndexMSA[$s1][$ExonS1FirstIndex[$scanner_exon_id]];
+			    }
+			    $scanner_exon_id--;
+			    next;
+			}
+
+			# Have we found an exon to define our upstream nucl. bound?
+			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS2LastIndex[$scanner_exon_id]) {
 			    $upstream_nucl_s2 = $MapMSA[$s2][$ExonS2LastIndex[$scanner_exon_id]];
 			    last;
 			}
+			
 			$scanner_exon_id--;
+
 		    }
 		    
 		    $scanner_exon_id = $exon_id+1;
 		    while ($scanner_exon_id < $num_exons) {
-			if ($ExonAliQuality[$scanner_exon_id] == 1
-			    && $ExonS2FirstIndex[$scanner_exon_id]
-			    && !$IsMicroExon[$scanner_exon_id]) {
+			
+			# Slurp in micro-exons
+			if ($IsMicroExon[$scanner_exon_id]) {
+			    if (length($ExonS1Query[$scanner_exon_id]) > 0) {
+
+				$query_amino_seq = $query_amino_seq.$ExonS1Query[$scanner_exon_id];
+				$query_end_amino_index = $IndexMSA[$s1][$ExonS1LastIndex[$scanner_exon_id]];
+			    }
+			    $scanner_exon_id++;
+			    next;
+			}
+			
+			# Have we found an exon to define our downstream nucl. bound?
+			if ($ExonAliQuality[$scanner_exon_id] == 1 && $ExonS2FirstIndex[$scanner_exon_id]) {
 			    $downstream_nucl_s2 = $MapMSA[$s2][$ExonS2FirstIndex[$scanner_exon_id]];
 			    last;
 			}
+
 			$scanner_exon_id++;
+			
 		    }
 		    
+		    my $s1_amino_range = $query_start_amino_index.'..'.$query_end_amino_index;
 		    my $s2_nucl_range = $upstream_nucl_s2.'..'.$downstream_nucl_s2;
 
 		    # Scream and shout about it, why don't'cha?!
-		    push(@QuerySeqs,lc($ExonS1Query[$exon_id]));
+		    push(@QuerySeqs,lc($query_amino_seq));
 		    push(@QuerySpecies,$SpeciesNames[$s1]);
 		    push(@QueryAminoRanges,$s1_amino_range);
 		    push(@TargetSpecies,$SpeciesNames[$s2]);
