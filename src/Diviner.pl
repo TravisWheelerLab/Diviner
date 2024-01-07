@@ -1381,8 +1381,8 @@ sub FindGhostExons
 		my $num_s2_gaps       = 0; #         2                    1
 		for (my $col=$ExonStarts[$exon_id]; $col<$ExonEnds[$exon_id]; $col++) {
 
-		    my $s1_char = $MSA[$s1][$col];
-		    my $s2_char = $MSA[$s2][$col];
+		    my $s1_char = uc($MSA[$s1][$col]);
+		    my $s2_char = uc($MSA[$s2][$col]);
 
 		    # Both are gaps -- nothing to see here!
 		    if ($s1_char eq '-' && $s2_char eq '-') {
@@ -1424,6 +1424,9 @@ sub FindGhostExons
 		    
 		}
 
+		$ExonS1Query[$exon_id] = $s1_query;
+		$ExonS2Query[$exon_id] = $s2_query;
+
 		my $num_bad_cols     = $num_mismatch_cols + $num_s1_gaps + $num_s2_gaps;
 		my $num_content_cols = $num_match_cols + $num_bad_cols;
 
@@ -1443,11 +1446,14 @@ sub FindGhostExons
 		}
 
 		# Check 2: Too many gaps
-		if ($num_s1_gaps > $num_content_cols / 2 || $num_s2_gaps > $num_content_cols / 2) {
-		    $ExonAliQuality[$exon_id] = -1;
+		if ($num_s1_gaps + $num_s2_gaps > $num_content_cols / 2) {
+		    $ExonAliQuality[$exon_id] = -2;
 		    next;
 		}
-		
+
+		# All checks passed -- that's a nice exon alignment you
+		# got there, bud!
+		$ExonAliQuality[$exon_id] = 1;
 
 	    }
 
