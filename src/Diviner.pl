@@ -2286,16 +2286,12 @@ sub RecordGhostMSAs
 			}
 		    }
 
-		    my $frame_out_strs_ref
-			= GenMultiAliString($exon,$target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],
-					    \@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
+		    my $frame_out_strs_ref = GenMultiAliString($exon,$target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],\@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
 
 		    my @FrameOutStrs = @{$frame_out_strs_ref};
 
-		    # DEBUGGING
-		    foreach my $out_str (@FrameOutStrs) {
-			next if (!$out_str);
-			print $SpeciesOutFile "$out_str\n";
+		    foreach my $frame_out_str (@FrameOutStrs) {
+			print $SpeciesOutFile "$frame_out_str";
 		    }
 		    
 		}
@@ -2406,7 +2402,7 @@ sub GenMultiAliString
 	    
 	    my @FrameAliScores = @{$frame_ali_scores_ref};
 	    my @FrameAliTargetRanges = @{$frame_ali_target_ranges_ref};
-	    my @FrameAliQueryRanges = @{$frame_ali_source_ranges_ref};
+	    my @FrameAliQueryRanges = @{$frame_ali_query_ranges_ref};
 
 	    for (my $i=0; $i<$frame_num_alis; $i++) {
 
@@ -2500,6 +2496,7 @@ sub GenMultiAliString
 	}
 	my $amino_ali_length = scalar(@AminoAlignment);
 
+
 	my $ali_nucl_start_index = 3 * $frame_target_start + $frame;
 	my $ali_nucl_end_index   = 3 * $frame_target_end   + $frame;
 
@@ -2507,8 +2504,10 @@ sub GenMultiAliString
 	for (my $i=$ali_nucl_start_index; $i<=$ali_nucl_end_index; $i++) {
 	    push(@AliNucls,$Nucls[$i]);
 	}
+
 	
-	my $ali_nucl_start = $target_range_start;
+	# What are the actual nucleotide coordinates of our alignment?
+	my $ali_nucl_start = $target_start;
 	my $ali_nucl_end = $ali_nucl_start;
 	if ($revcomp) {
 	    $ali_nucl_start -= $ali_nucl_start_index;
@@ -2664,7 +2663,7 @@ sub GenMultiAliString
 	}
 
 	for (my $i=0; $i<$num_frame_users+2; $i++) {
-	    while (length($VisMatrixRowLabels[$i]) < $longest_row_lable_length) {
+	    while (length($VisMatrixRowLabels[$i]) < $longest_row_label_length) {
 		$VisMatrixRowLabels[$i] = ' '.$VisMatrixRowLabels[$i];
 	    }
 	}
@@ -2703,16 +2702,15 @@ sub GenMultiAliString
 	    $metadata_str = $metadata_str."$query_ali_pct_id% alignment identity\n";
 	    
 	}
-	$metadata_str = $metadata_str."\n"
+	$metadata_str = $metadata_str."\n";
 	
 
 	# Put together the alignment string
+	my $ali_vis_str = "\n";	    
 	my $ali_vis_col = 0;
 	my $line_length = 60;
 	while ($ali_vis_col < $vis_matrix_len) {
 
-	    my $ali_vis_str = "\n";
-	    
 	    my $line_break_col = Min($ali_vis_col+$line_length, $vis_matrix_len);
 	    for (my $i=0; $i<$num_frame_users+2; $i++) {
 		$ali_vis_str = $ali_vis_str.$VisMatrixRowLabels[$i].'  ';
