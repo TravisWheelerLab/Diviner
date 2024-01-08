@@ -2103,7 +2103,7 @@ sub RecordGhostMSAs
 
 	
 	$line = <$SearchFile>;
-	$line =~ /\: (\S+) \(\S+\)/;
+	$line =~ /\: (\S+) \((\S+)\)/;
 
 	my $target_species = $1;
 	my $target_range = $2;
@@ -2286,7 +2286,9 @@ sub RecordGhostMSAs
 			}
 		    }
 
-		    my $frame_out_strs_ref = GenMultiAliString($exon,$target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],\@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
+		    my $frame_out_strs_ref = GenMultiAliString($exon,$target_species,$target_chr,
+							       $OverlapGroupToRange[$hit_group_id],
+							       \@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
 
 		    my @FrameOutStrs = @{$frame_out_strs_ref};
 
