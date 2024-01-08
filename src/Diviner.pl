@@ -2722,6 +2722,8 @@ sub GenMultiAliString
 		$ali_vis_str = $ali_vis_str."\n";
 	    }
 	    $ali_vis_str = $ali_vis_str."\n";
+
+	    $ali_vis_col = $line_break_col;
 	    
 	}
 	$ali_vis_str = $ali_vis_str."\n";
