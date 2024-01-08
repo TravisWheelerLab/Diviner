@@ -27,6 +27,7 @@ sub ReduceMSAToSpecies;
 sub FindGhostExons;
 sub FindAliQualityDrops;
 sub RecordGhostMSAs;
+sub GenMultiAliString;
 sub OrigRecordGhostMSAs;
 sub GatherBestLocalAlis;
 sub LocalAlign;
@@ -2285,9 +2286,17 @@ sub RecordGhostMSAs
 			}
 		    }
 
-		    my $group_out_str
-			= GenMultiAliString($target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],
+		    my $frame_out_strs_ref
+			= GenMultiAliString($exon,$target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],
 					    \@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
+
+		    my @FrameOutStrs = @{$frame_out_strs_ref};
+
+		    # DEBUGGING
+		    foreach my $out_str (@FrameOutStrs) {
+			next if (!$out_str);
+			print $SpeciesOutFile "$out_str\n";
+		    }
 		    
 		}
 
@@ -2315,6 +2324,8 @@ sub RecordGhostMSAs
 #
 sub GenMultiAliString
 {
+    my $exon_id = shift;
+    
     my $target_species = shift;
     my $target_chr = shift;
     my $target_range = shift;
@@ -2331,34 +2342,35 @@ sub GenMultiAliString
     
 
     $target_range =~ /^(\d+)\.\.(\d+)$/;
-    my $target_range_start = $1;
-    my $target_range_end = $2;
+    my $target_start = $1;
+    my $target_end = $2;
 
     my $revcomp = 0;
+    my $search_target_chr = $target_chr;
     if ($target_chr =~ /\[revcomp\]/) {
-	$target_chr =~ s/\[\revcomp]//;
+	$search_target_chr =~ s/\[\revcomp]//;
 	$revcomp = 1;
-	$target_start += 30;
-	$target_end   -= 30;
+	$target_start += 100;
+	$target_end   -= 100;
     } else {
-	$target_start -= 30;
-	$target_end   += 30;
+	$target_start -= 100;
+	$target_end   += 100;
     }
 
     
     my $sfetch_cmd = $sfetch.' -range '.$target_start.'..'.$target_end;
-    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$search_target_chr;
 
     my $NuclFile = OpenSystemCommand($sfetch_cmd);
     <$NuclFile>;
     my $nucl_seq = '';
     while (my $line = <$NuclFile>) {
 	$line =~ s/\n|\r//g;
-	$nucl_seq = $nucl_seq.uc($line);
+	$nucl_seq = $nucl_seq.$line;
     }
     close($NuclFile);
 
-    my @Nucls = split(//,$nucl_seq);
+    my @Nucls = split(//,uc($nucl_seq));
     my @TransFrames;
     for (my $frame=0; $frame<3; $frame++) {
 
@@ -2368,7 +2380,7 @@ sub GenMultiAliString
 	    $frame_str = $frame_str.$amino;
 	}
 
-	$TransFrames[$frame] = $frame_str;
+	$TransFrames[$frame] = uc($frame_str);
 	
     }
 
@@ -2386,23 +2398,24 @@ sub GenMultiAliString
 
 	for (my $frame = 0; $frame < 3; $frame++) {
 
-	    my ($num_alis,$ali_score_densities_ref,$ali_scores_ref,$ali_target_ranges_ref,$ali_query_ranges_ref)
+	    my ($frame_num_alis,$frame_ali_score_densities_ref,$frame_ali_scores_ref,
+		$frame_ali_target_ranges_ref,$frame_ali_query_ranges_ref)
 		= GatherBestLocalAlis($TransFrames[$frame],0,$QueryAminoSeqs[$query_id],0);
-	    next if (!$num_alis);
+	    next if (!$frame_num_alis);
 
 	    
-	    my @AliScores = @{$ali_scores_ref};
-	    my @AliTargetRanges = @{$ali_target_ranges_ref};
-	    my @AliQueryRanges = @{$ali_source_ranges_ref};
+	    my @FrameAliScores = @{$frame_ali_scores_ref};
+	    my @FrameAliTargetRanges = @{$frame_ali_target_ranges_ref};
+	    my @FrameAliQueryRanges = @{$frame_ali_source_ranges_ref};
 
-	    for (my $i=0; $i<$num_alis; $i++) {
+	    for (my $i=0; $i<$frame_num_alis; $i++) {
 
-		if ($AliScores[$i] > $best_ali_score) {
+		if ($FrameAliScores[$i] > $best_ali_score) {
 
-		    $best_ali_score = $AliScores[$i];
+		    $best_ali_score = $FrameAliScores[$i];
 		    $best_ali_frame = $frame;
-		    $best_ali_target_range = $AliTargetRanges[$i];
-		    $best_ali_query_range = $AliQueryRanges[$i];
+		    $best_ali_target_range = $FrameAliTargetRanges[$i];
+		    $best_ali_query_range = $FrameAliQueryRanges[$i];
 		    
 		}
 		
@@ -2410,9 +2423,9 @@ sub GenMultiAliString
 	    
 	}
 
-	$AliReadingFrames[$i] = $best_ali_frame;
-	$AliTargetRanges[$i] = $best_ali_target_range;
-	$AliQueryRanges[$i] = $best_ali_query_range;
+	$AliReadingFrames[$query_id] = $best_ali_frame;
+	$AliTargetRanges[$query_id] = $best_ali_target_range;
+	$AliQueryRanges[$query_id] = $best_ali_query_range;
 				      
     }
 
@@ -2421,7 +2434,303 @@ sub GenMultiAliString
     # each reading frame and generate a frame-specific alignment
     # (this should almost always be just one frame, but never hurts
     # to be able to catch dual-coding stuff!)
-    
+    my @FrameOutStrs;
+    for (my $frame=0; $frame<3; $frame++) {
+
+	$FrameOutStrs[$frame] = '';
+	
+	# Which queries used this reading frame?
+	my @FrameUsers;
+	my @FrameQuerySeqs;
+	my $num_frame_users = 0;
+
+	# What parts of the target did they align to?
+	# NOTE that these are amino acid coordinates within
+	# the translated string.
+	my $frame_target_start = 0;
+	my $frame_target_end   = 0;
+	for (my $query_id=0; $query_id<$num_queries; $query_id++) {
+	    if ($AliReadingFrames[$query_id] == $frame) {
+
+		push(@FrameUsers,$query_id);
+		$num_frame_users++;
+
+		# Grab the portion of this query that aligns well
+		# to our target
+		$AliQueryRanges[$query_id] =~ /^(\d+)\.\.(\d+)/;
+		my $ali_query_start = $1;
+		my $ali_query_end   = $2;
+
+		my @QuerySeq = split(//,$QueryAminoSeqs[$query_id]);
+		my $frame_query_seq = '';
+		for (my $i=$ali_query_start; $i<=$ali_query_end; $i++) {
+		    $frame_query_seq = $frame_query_seq.uc($QuerySeq[$i]);
+		}
+		push(@FrameQuerySeqs,$frame_query_seq);
+
+		# Make sure we're keeping hold of the portion of the
+		# target (translated) sequence that our queries like
+		# to align to.
+		$AliTargetRanges[$query_id] =~ /^(\d+)\.\.(\d+)$/;
+		my $ali_target_start = $1;
+		my $ali_target_end   = $2;
+
+		if (!$frame_target_start) {
+		    $frame_target_start = $ali_target_start;
+		    $frame_target_end   = $ali_target_end;
+		} else {
+		    $frame_target_start = Min($frame_target_start,$ali_target_start);
+		    $frame_target_end   = Max($frame_target_end  ,$ali_target_end  );
+		}
+
+	    }
+	}
+
+	
+	# If none of the queries used this reading frame, skip it!
+	next if ($num_frame_users == 0);
+
+	
+	# Tight! Let's align them query sequences to our target sequence!
+	my @AminoAlignment = split(//,$TransFrames[$frame]);
+	for (my $i=0; $i<$num_frame_users; $i++) {
+	    my @QueryAminos   = split(//,$FrameQuerySeqs[$i]);
+	    my $amino_ali_ref = MultiAminoSeqAli(\@AminoAlignment,\@QueryAminos);
+	    @AminoAlignment   = @{$amino_ali_ref};
+	}
+	my $amino_ali_length = scalar(@AminoAlignment);
+
+	my $ali_nucl_start_index = 3 * $frame_target_start + $frame;
+	my $ali_nucl_end_index   = 3 * $frame_target_end   + $frame;
+
+	my @AliNucls;
+	for (my $i=$ali_nucl_start_index; $i<=$ali_nucl_end_index; $i++) {
+	    push(@AliNucls,$Nucls[$i]);
+	}
+	
+	my $ali_nucl_start = $target_range_start;
+	my $ali_nucl_end = $ali_nucl_start;
+	if ($revcomp) {
+	    $ali_nucl_start -= $ali_nucl_start_index;
+	    $ali_nucl_end   -= $ali_nucl_end_index;
+	} else {
+	    $ali_nucl_start += $ali_nucl_start_index;
+	    $ali_nucl_end   += $ali_nucl_end_index;
+	}
+
+	
+	# The very last thing we'll do before starting work
+	# on the visualization matrix is to pull in 60 nucleotides
+	# on either side of the alignment region.
+	my $nucl_buffer_len = 60;
+
+	my @LeftNuclBuffer;
+	for (my $i=$ali_nucl_start_index-$nucl_buffer_len; $i<$ali_nucl_start_index; $i++) {
+	    push(@LeftNuclBuffer,lc($Nucls[$i]));
+	}
+
+	my @RightNuclBuffer;
+	for (my $i=$ali_nucl_end_index+1; $i<=$ali_nucl_end_index+$nucl_buffer_len; $i++) {
+	    push(@RightNuclBuffer,lc($Nucls[$i]));
+	}
+
+	
+	# Now we can start building up our visualization matrix!
+	my @VisMatrix;
+
+	# We'll start by incorporating the left-side nucleotide buffer
+	my $vis_matrix_len = 0;
+	for (my $i=0; $i<$nucl_buffer_len; $i++) {
+
+	    $VisMatrix[0][$vis_matrix_len] = ' ';
+	    $VisMatrix[1][$vis_matrix_len] = $LeftNuclBuffer[$i];
+	    for (my $j=0; $j<$num_frame_users; $j++) {
+		$VisMatrix[2+$j][$vis_matrix_len] = ' ';
+	    }
+	    $vis_matrix_len++;
+
+	}
+
+
+	# Now we can build up the body of the visualization matrix
+	# (and, simultaneously, our match / mismatch counts for each source)
+	my @QueryAliMatches;
+	my @QueryAliMismatches;
+	for (my $i=0; $i<$num_frame_users; $i++) {
+	    $QueryAliMatches[$i] = 0;
+	    $QueryAliMismatches[$i] = 0;
+	}
+	
+	my $nucl_chars_pos = 0;
+	for (my $i=0; $i<$amino_ali_length; $i++) {
+
+	    my @AminoColumn = split(//,$AminoAlignment[$i]);
+
+	    my $insertion = 0;
+	    $insertion = 1 if ($AminoColumn[0] eq '-');
+	    
+	    # Left nucleotide of codon
+	    # = Translation
+	    $VisMatrix[0][$vis_matrix_len] = ' ';
+	    # = Nucleotides
+	    if ($insertion) { $VisMatrix[1][$vis_matrix_len] = '-';                          }
+	    else            { $VisMatrix[1][$vis_matrix_len] = $AliNucls[$nucl_chars_pos++]; }
+	    # = Queries
+	    for (my $j=0; $j<$num_frame_users; $j++) {
+		$VisMatrix[2+$j][$vis_matrix_len] = ' ';
+	    }
+	    $vis_matrix_len++;
+
+	    # Center nucleotide (and aminos!)
+	    # = Translation
+	    $VisMatrix[0][$vis_matrix_len] = $AminoColumn[0];
+	    # = Nucleotides
+	    if ($insertion) { $VisMatrix[1][$vis_matrix_len] = '-';                          }
+	    else            { $VisMatrix[1][$vis_matrix_len] = $AliNucls[$nucl_chars_pos++]; }
+	    # = Queries
+	    for (my $j=0; $j<$num_frame_users; $j++) {
+		
+		my $query_ali_amino = $AminoColumn[$j+1];
+		if ($insertion) {
+		    if ($query_ali_amino =~ /[A-Z]/) {
+			$VisMatrix[2+$j][$vis_matrix_len] = lc($query_ali_amino);
+			$QueryAliMismatches[$j]++;
+		    } else {
+			$VisMatrix[2+$j][$vis_matrix_len] = '-';
+		    }
+		    next;
+		}
+
+		if ($query_ali_amino =~ /[A-Z]/) {
+		    if ($query_ali_amino eq $AminoColumn[0]) {
+			$VisMatrix[2+$j][$vis_matrix_len] = '.';
+			$QueryAliMatches[$j]++;
+		    } else {
+			$VisMatrix[2+$j][$vis_matrix_len] = lc($query_ali_amino);
+			$QueryAliMismatches[$j]++;
+		    }
+		} else {
+		    $VisMatrix[2+$j][$vis_matrix_len] = $query_ali_amino; # Presumably '-'
+		    $QueryAliMismatches[$j]++;
+		}
+
+	    }
+	    $vis_matrix_len++;
+
+	    # Right nucleotide of codon
+	    # = Translation
+	    $VisMatrix[0][$vis_matrix_len] = ' ';
+	    # = Nucleotides
+	    if ($insertion) { $VisMatrix[1][$vis_matrix_len] = '-';                          }
+	    else            { $VisMatrix[1][$vis_matrix_len] = $AliNucls[$nucl_chars_pos++]; }
+	    # = Queries
+	    for (my $j=0; $j<$num_frame_users; $j++) {
+		$VisMatrix[2+$j][$vis_matrix_len] = ' ';
+	    }
+	    $vis_matrix_len++;
+
+
+	}
+
+	# Finally, we'll wrap up with the right-side nucleotide buffer
+	for (my $i=0; $i<$nucl_buffer_len; $i++) {
+
+	    $VisMatrix[0][$vis_matrix_len] = ' ';
+	    $VisMatrix[1][$vis_matrix_len] = $RightNuclBuffer[$i];
+	    for (my $j=0; $j<$num_frame_users; $j++) {
+		$VisMatrix[2+$j][$vis_matrix_len] = ' ';
+	    }
+	    $vis_matrix_len++;
+	    
+	}
+
+
+	# Great work!  That covers the main visualization of the alignment,
+	# but we also want to make sure that each row is given a label
+	my @VisMatrixRowLabels;
+	$VisMatrixRowLabels[0] = $target_species;
+	$VisMatrixRowLabels[1] = '';
+	my $longest_row_label_length = length($target_species);
+	for (my $i=0; $i<$num_frame_users; $i++) {
+
+	    my $query_id = $FrameUsers[$i];
+	    my $query_species = $QuerySpecies[$query_id];
+	    
+	    $VisMatrixRowLabels[2+$i] = $query_species;
+	    if (length($query_species) > $longest_row_label_length) {
+		$longest_row_label_length = length($query_species);
+	    }
+	    
+	}
+
+	for (my $i=0; $i<$num_frame_users+2; $i++) {
+	    while (length($VisMatrixRowLabels[$i]) < $longest_row_lable_length) {
+		$VisMatrixRowLabels[$i] = ' '.$VisMatrixRowLabels[$i];
+	    }
+	}
+
+
+	# YEE-HAW! We have everything in place *except* for the metadata string
+	# (but let's do some debugging first...)
+
+	my $gtf_overlap_str = "Novel exon (no GTF overlaps)";
+	
+	my $metadata_str = "\n  Target : $target_species $target_chr:$ali_nucl_start..$ali_nucl_end\n";
+	$metadata_str    = $metadata_str."         : $gtf_overlap_str\n";
+	$metadata_str    = $metadata_str."  Source : Exon $exon_id (Species-wise MSA)\n";
+
+	for (my $i=0; $i<$num_frame_users; $i++) {
+
+	    my $query_id = $FrameUsers[$i];
+	    my $query_species = $QuerySpecies[$query_id];
+
+	    $AliQueryRanges[$query_id] =~ /^(\d+)\.\.(\d+)$/;
+	    my $query_ali_start = $1;
+	    my $query_ali_end   = $2;
+	    
+	    $QueryAminoRanges[$query_id] =~ /^(\d+)\.\./;
+	    my $query_start_amino = $1;
+
+	    $query_ali_start += $query_start_amino;
+	    $query_ali_end   += $query_start_amino;
+
+	    my $query_matches = $QueryAliMatches[$i];
+	    my $total_query_cols = $QueryAliMatches[$i] + $QueryAliMismatches[$i];
+	    my $query_ali_pct_id = int(1000.0 * $query_matches / $total_query_cols) / 10.0;
+
+	    $metadata_str = $metadata_str."         : $query_species / ";
+	    $metadata_str = $metadata_str."aminos $query_ali_start..$query_ali_end / ";
+	    $metadata_str = $metadata_str."$query_ali_pct_id% alignment identity\n";
+	    
+	}
+	$metadata_str = $metadata_str."\n"
+	
+
+	# Put together the alignment string
+	my $ali_vis_col = 0;
+	my $line_length = 60;
+	while ($ali_vis_col < $vis_matrix_len) {
+
+	    my $ali_vis_str = "\n";
+	    
+	    my $line_break_col = Min($ali_vis_col+$line_length, $vis_matrix_len);
+	    for (my $i=0; $i<$num_frame_users+2; $i++) {
+		$ali_vis_str = $ali_vis_str.$VisMatrixRowLabels[$i].'  ';
+		for (my $j=$ali_vis_col; $j<$line_break_col; $j++) {
+		    $ali_vis_str = $ali_vis_str.$VisMatrix[$i][$j];
+		}
+		$ali_vis_str = $ali_vis_str."\n";
+	    }
+	    $ali_vis_str = $ali_vis_str."\n";
+	    
+	}
+	$ali_vis_str = $ali_vis_str."\n";
+
+	$FrameOutStrs[$frame] = $metadata_str.$ali_vis_str;
+	
+    }
+
+    return \@FrameOutStrs;
     
 }
 
