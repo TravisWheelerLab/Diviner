@@ -2074,9 +2074,9 @@ sub FindAliQualityDrops
 
 ###############################################################
 #
-#  Function:  OrigRecordGhostMSAs
+#  Function:  RecordGhostMSAs
 #
-sub OrigRecordGhostMSAs
+sub RecordGhostMSAs
 {
     my $gene = shift;
 
@@ -2210,14 +2210,16 @@ sub OrigRecordGhostMSAs
 		    
 		}
 
+		
 		# Now that we have all of the hits that landed on this chromosome,
 		# the very last thing we need to do identify the overlapping regions
 		my @OverlapGroups;
+		my @OverlapGroupToRange;
+		my $num_overlap_groups = 0;
 		for (my $i=0; $i<$num_chr_group_hits; $i++) {
 		    $OverlapGroups[$i] = 0;
 		}
 
-		my $num_overlap_groups = 0;
 		while (1) {
 
 		    my $base_hit_id = 0;
@@ -2231,12 +2233,65 @@ sub OrigRecordGhostMSAs
 		    # Build up a grouping of all hits that overlap with
 		    # hits that overlap with ChrGroupTargetRanges[base_hit_id]
 		    my $overlap_range = $ChrGroupTargetRanges[$base_hit_id];
-		    $OverlapGroups[$base_hit_id] = ++$num_overlap_groups;
 
-		    # CHECKPOINT
+		    while (1) {
+
+			my $range_record = $overlap_range;
+
+			for (my $i=0; $i<$num_chr_group_hits; $i++) {
+
+			    # If this hit is already grouped, skip it
+			    next if ($OverlapGroups[$i]);
+
+			    my ($overlap_check, $check_overlap_range)
+				= RangesOverlap($ChrGroupTargetRanges[$i],$overlap_range);
+
+			    $overlap_range = $check_overlap_range if ($overlap_check);
+			    
+			}
+
+			# If the last scan didn't change our range, we're done!
+			last if ($range_record eq $overlap_range);
+			
+		    }
+
+		    # Record which hits the new overlap range covers
+		    $num_overlap_groups++;
+		    $OverlapGroupToRange[$num_overlap_groups] = $overlap_range;
+		    for (my $i=0; $i<$num_chr_group_hits; $i++) {
+			next if ($OverlapGroups[$i]);
+			my ($overlap_check, $check_overlap_range)
+			    = RangesOverlap($ChrGroupTargetRanges[$i],$overlap_range);
+			$OverlapGroups[$i] = $num_overlap_groups if ($overlap_check);
+		    }
 		    
 		}
 
+		
+		# Iterate over all groups of hits that overlap (in terms of their
+		# positions on the target chromosome) and generate an alignment for
+		# each group
+		for (my $hit_group_id = 1; $hit_group_id <= $num_overlap_groups; $hit_group_id) {
+		    
+		    my @GroupQuerySpecies;
+		    my @GroupQueryRanges;
+		    my @GroupQuerySeqs;
+
+		    for (my $i=0; $i<$num_chr_group_hits; $i++) {
+			if ($OverlapGroups[$i] == $hit_group_id) {
+			    push(@GroupQuerySpecies,$ChrGroupQuerySpecies[$i]);
+			    push(@GroupQueryRanges,$ChrGroupQueryRanges[$i]);
+			    push(@GroupQuerySeqs,$ChrGroupQuerySeqs[$i]);
+			}
+		    }
+
+		    my $group_out_str
+			= GenMultiAliString($target_species,$target_chr,$OverlapGroupToRange[$hit_group_id],
+					    \@GroupQuerySpecies,\@GroupQueryRanges,\@GroupQuerySeqs);
+		    
+		}
+
+		
 		# Done!
 		$AlreadyRecordedTargetChrs{$target_chr} = 1;
 		
@@ -2248,6 +2303,126 @@ sub OrigRecordGhostMSAs
 	
     }
 
+}
+
+
+
+
+
+###############################################################
+#
+#  Function:  GenMultiAliString
+#
+sub GenMultiAliString
+{
+    my $target_species = shift;
+    my $target_chr = shift;
+    my $target_range = shift;
+
+    my $query_species_ref = shift;
+    my $query_amino_ranges_ref = shift;
+    my $query_amino_seqs_ref = shift;
+
+    my @QuerySpecies = @{$query_species_ref};
+    my @QueryAminoRanges = @{$query_amino_ranges_ref};
+    my @QueryAminoSeqs = @{$query_amino_seqs_ref};
+
+    my $num_queries = scalar(@QueryAminoSeqs);
+    
+
+    $target_range =~ /^(\d+)\.\.(\d+)$/;
+    my $target_range_start = $1;
+    my $target_range_end = $2;
+
+    my $revcomp = 0;
+    if ($target_chr =~ /\[revcomp\]/) {
+	$target_chr =~ s/\[\revcomp]//;
+	$revcomp = 1;
+	$target_start += 30;
+	$target_end   -= 30;
+    } else {
+	$target_start -= 30;
+	$target_end   += 30;
+    }
+
+    
+    my $sfetch_cmd = $sfetch.' -range '.$target_start.'..'.$target_end;
+    $sfetch_cmd = $sfetch_cmd.' '.$SpeciesToGenomes{$target_species}.' '.$chr;
+
+    my $NuclFile = OpenSystemCommand($sfetch_cmd);
+    <$NuclFile>;
+    my $nucl_seq = '';
+    while (my $line = <$NuclFile>) {
+	$line =~ s/\n|\r//g;
+	$nucl_seq = $nucl_seq.uc($line);
+    }
+    close($NuclFile);
+
+    my @Nucls = split(//,$nucl_seq);
+    my @TransFrames;
+    for (my $frame=0; $frame<3; $frame++) {
+
+	my $frame_str = '';
+	for (my $codon_start = $frame; $codon_start+2 < scalar(@Nucls); $codon_start += 3) {
+	    my $amino = TranslateCodon($Nucls[$codon_start].$Nucls[$codon_start+1].$Nucls[$codon_start+2]);
+	    $frame_str = $frame_str.$amino;
+	}
+
+	$TransFrames[$frame] = $frame_str;
+	
+    }
+
+
+    my @AliReadingFrames;
+    my @AliTargetRanges;
+    my @AliQueryRanges;
+    
+    for (my $query_id = 0; $query_id < $num_queries; $query_id++) {
+
+	my $best_ali_score        = -1;
+	my $best_ali_frame        = -1;
+	my $best_ali_target_range = -1;
+	my $best_ali_query_range  = -1;
+
+	for (my $frame = 0; $frame < 3; $frame++) {
+
+	    my ($num_alis,$ali_score_densities_ref,$ali_scores_ref,$ali_target_ranges_ref,$ali_query_ranges_ref)
+		= GatherBestLocalAlis($TransFrames[$frame],0,$QueryAminoSeqs[$query_id],0);
+	    next if (!$num_alis);
+
+	    
+	    my @AliScores = @{$ali_scores_ref};
+	    my @AliTargetRanges = @{$ali_target_ranges_ref};
+	    my @AliQueryRanges = @{$ali_source_ranges_ref};
+
+	    for (my $i=0; $i<$num_alis; $i++) {
+
+		if ($AliScores[$i] > $best_ali_score) {
+
+		    $best_ali_score = $AliScores[$i];
+		    $best_ali_frame = $frame;
+		    $best_ali_target_range = $AliTargetRanges[$i];
+		    $best_ali_query_range = $AliQueryRanges[$i];
+		    
+		}
+		
+	    }
+	    
+	}
+
+	$AliReadingFrames[$i] = $best_ali_frame;
+	$AliTargetRanges[$i] = $best_ali_target_range;
+	$AliQueryRanges[$i] = $best_ali_query_range;
+				      
+    }
+
+
+    # Even though it's probably a little bit silly, we'll run through
+    # each reading frame and generate a frame-specific alignment
+    # (this should almost always be just one frame, but never hurts
+    # to be able to catch dual-coding stuff!)
+    
+    
 }
 
 
@@ -2560,7 +2735,7 @@ sub OrigRecordGhostMSAs
 			
 			my @SourceChars = split(//,$SourceSeqs[$source_id]);
 			
-			my ($num_alis,$score_densities_ref,$target_ranges_ref,$source_ranges_ref)
+			my ($num_alis,$score_densities_ref,$scores_ref,$target_ranges_ref,$source_ranges_ref)
 			    = GatherBestLocalAlis(\@TransChars,0,\@SourceChars,0);
 			
 			next if (!$num_alis);
@@ -3341,25 +3516,25 @@ sub OrigRecordGhostMSAs
 #
 sub GatherBestLocalAlis
 {
-    my $target_chars_ref = shift;
-    my $target_start     = shift;
+    my $target_seq   = shift;
+    my $target_start = shift;
 
-    my $source_chars_ref = shift;
-    my $source_start     = shift;
+    my $source_seq   = shift;
+    my $source_start = shift;
     
-    my @TargetChars = @{$target_chars_ref};
-    my @SourceChars = @{$source_chars_ref};
+    my @TargetChars = split(//,$target_seq);
+    my @SourceChars = split(//,$source_seq);
     
     my $num_target_chars = scalar(@TargetChars);
     my $num_source_chars = scalar(@SourceChars);
     
 
-    my ($score_density,$target_ali_start,$target_ali_end,$source_ali_start,$source_ali_end)
+    my ($score_density,$score,$target_ali_start,$target_ali_end,$source_ali_start,$source_ali_end)
 	= LocalAlign(\@TargetChars,\@SourceChars);
 
 
     # Did we not find anything we're excited about?
-    return (0,0,0,0) if ($score_density < $score_density_threshold);
+    return (0,0,0,0,0) if ($score_density < $score_density_threshold);
 
     
     my $true_target_ali_start = $target_ali_start + $target_start;
@@ -3374,10 +3549,12 @@ sub GatherBestLocalAlis
 
 
     my $num_alis = 1;
+    my @Scores;
     my @ScoreDensities;
     my @TargetRanges;
     my @SourceRanges;
-    
+
+    push(@Scores,$score);
     push(@ScoreDensities,$score_density);
     push(@TargetRanges,$target_ali_range);
     push(@SourceRanges,$source_ali_range);
@@ -3386,7 +3563,8 @@ sub GatherBestLocalAlis
     # Now we see what's good to the left and right of *this* optimal local alignment
     my $min_ali_len = 8;
 
-    
+
+    my @LeftScores;
     my @LeftDensities;
     my @LeftTargetRanges;
     my @LeftSourceRanges;
@@ -3402,11 +3580,12 @@ sub GatherBestLocalAlis
 	    push(@LeftSourceChars,$SourceChars[$j]);
 	}
 	
-	my ($num_left_alis,$left_dens_ref,$left_target_ranges_ref,$left_source_ranges_ref)
+	my ($num_left_alis,$left_dens_ref,$left_scores_ref,$left_target_ranges_ref,$left_source_ranges_ref)
 	    = GatherBestLocalAlis(\@LeftTargetChars,$target_start,
 				  \@LeftSourceChars,$source_start);
 
 	if ($num_left_alis) {
+	    @LeftScores = @{$left_scores_ref};
 	    @LeftDensities = @{$left_dens_ref};
 	    @LeftTargetRanges = @{$left_target_ranges_ref};
 	    @LeftSourceRanges = @{$left_source_ranges_ref};
@@ -3414,7 +3593,8 @@ sub GatherBestLocalAlis
 	
     }
 
-    
+
+    my @RightScores;
     my @RightDensities;
     my @RightTargetRanges;
     my @RightSourceRanges;
@@ -3430,11 +3610,12 @@ sub GatherBestLocalAlis
 	    push(@RightSourceChars,$SourceChars[$j]);
 	}
 	
-	my ($num_right_alis,$right_dens_ref,$right_target_ranges_ref,$right_source_ranges_ref)
+	my ($num_right_alis,$right_dens_ref,$right_scores_ref,$right_target_ranges_ref,$right_source_ranges_ref)
 	    = GatherBestLocalAlis(\@RightTargetChars,$true_target_ali_end+1,
 				  \@RightSourceChars,$true_source_ali_end+1);
 
 	if ($num_right_alis) {
+	    @RightScores = @{$right_scores_ref};
 	    @RightDensities = @{$right_dens_ref};
 	    @RightTargetRanges = @{$right_target_ranges_ref};
 	    @RightSourceRanges = @{$right_source_ranges_ref};
@@ -3450,6 +3631,7 @@ sub GatherBestLocalAlis
 	
 	if ($LeftDensities[$left_index] > $RightDensities[$right_index]) {
 
+	    $Scores[$num_alis] = $LeftScores[$left_index];
 	    $ScoreDensities[$num_alis] = $LeftDensities[$left_index];
 	    $TargetRanges[$num_alis] = $LeftTargetRanges[$left_index];
 	    $SourceRanges[$num_alis] = $LeftSourceRanges[$left_index];
@@ -3459,6 +3641,7 @@ sub GatherBestLocalAlis
 	    
 	} else {
 
+	    $Scores[$num_alis] = $RightScores[$right_index];
 	    $ScoreDensities[$num_alis] = $RightDensities[$right_index];
 	    $TargetRanges[$num_alis] = $RightTargetRanges[$right_index];
 	    $SourceRanges[$num_alis] = $RightSourceRanges[$right_index];
@@ -3472,6 +3655,7 @@ sub GatherBestLocalAlis
 
     while ($left_index < scalar(@LeftDensities)) {
 
+	$Scores[$num_alis] = $LeftScores[$left_index];
 	$ScoreDensities[$num_alis] = $LeftDensities[$left_index];
 	$TargetRanges[$num_alis] = $LeftTargetRanges[$left_index];
 	$SourceRanges[$num_alis] = $LeftSourceRanges[$left_index];
@@ -3482,7 +3666,8 @@ sub GatherBestLocalAlis
     }
 
     while ($right_index < scalar(@RightDensities)) {
-	
+
+	$Scores[$num_alis] = $Scores[$right_index];
 	$ScoreDensities[$num_alis] = $RightDensities[$right_index];
 	$TargetRanges[$num_alis] = $RightTargetRanges[$right_index];
 	$SourceRanges[$num_alis] = $RightSourceRanges[$right_index];
@@ -3492,7 +3677,7 @@ sub GatherBestLocalAlis
 
     }
 
-    return ($num_alis,\@ScoreDensities,\@TargetRanges,\@SourceRanges);
+    return ($num_alis,\@ScoreDensities,\@Scores,\@TargetRanges,\@SourceRanges);
     
 }
     
@@ -3552,7 +3737,7 @@ sub LocalAlign
 	}
     }
 
-    return (-1,0,0,0,0) if ($max_score < 25.0);
+    return (-1,0,0,0,0,0) if ($max_score < 25.0);
 
     # TRACEBACK!
     my $start_i = $max_i;
@@ -3601,7 +3786,7 @@ sub LocalAlign
     # which may not be representative of where we've trimmed the alignment.
     # NOTE that we need to reduce by 1 because our matrix corresponds to
     #   1-indexed sequences.
-    return($score_density,$start_i-1,$max_i-1,$start_j-1,$max_j-1);
+    return($score_density,$max_score,$start_i-1,$max_i-1,$start_j-1,$max_j-1);
 
 }
 
