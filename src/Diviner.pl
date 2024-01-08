@@ -27,6 +27,7 @@ sub ReduceMSAToSpecies;
 sub FindGhostExons;
 sub FindAliQualityDrops;
 sub RecordGhostMSAs;
+sub OrigRecordGhostMSAs;
 sub GatherBestLocalAlis;
 sub LocalAlign;
 sub GetB62Score;
@@ -1783,15 +1784,15 @@ sub FindGhostExons
 	# Speaking of outputting, let's just have these tidbits on-hand, too
 	my $query_species = $QuerySpecies[$ghost_id];
 
-	my $target_info = "MSA Ali Region  : Exon $MSAExons[$ghost_id]\n";
+	my $target_info = "MSA Exon Index  : Exon $MSAExons[$ghost_id]\n";
 	$target_info = $target_info."    Target Genome   : $target_species ($chr:$target_start..$target_end)\n";
-	$target_info = $target_info."    Source Species  : $query_species (Aminos $QueryAminoRanges[$ghost_id])\n";
+	$target_info = $target_info."    Query Species   : $query_species (Aminos $QueryAminoRanges[$ghost_id])\n";
 	
 	# Is it an especially elusive ghost we're chasing?
 	if ($num_tbn_hits == 0) {
 	    print $outf "[ ] Search failure (no tblastn hits)\n";
 	    print $outf "    $target_info";
-	    print $outf "    Search Sequence : $QuerySeqs[$ghost_id]\n\n";
+	    print $outf "    Query Sequence  : $QuerySeqs[$ghost_id]\n\n";
 	    next;
 	}
 	
@@ -1815,7 +1816,7 @@ sub FindGhostExons
 	# Sing it to high heaven!
 	print $outf "[+] Search success!\n";
 	print $outf "    $target_info";
-	print $outf "    Search Sequence : $mapped_seq\n";
+	print $outf "    Query Sequence  : $mapped_seq\n";
 	print $outf "    Num tblastn Hits: $num_tbn_hits\n";
 
 	for (my $hit=0; $hit<$num_tbn_hits; $hit++) {
@@ -2073,9 +2074,191 @@ sub FindAliQualityDrops
 
 ###############################################################
 #
-#  Function:  RecordGhostMSAs
+#  Function:  OrigRecordGhostMSAs
 #
-sub RecordGhostMSAs
+sub OrigRecordGhostMSAs
+{
+    my $gene = shift;
+
+    # First things first, we're going to need to grab ahold of this gene's dir
+    my $genedir = ConfirmDirectory($outgenesdir.$gene);
+
+    # Open up the file with all of the hits for this gene and read in all
+    # successful maps
+    my $SearchFile = OpenInputFile($genedir.'search.out');
+
+    my %TargetSpeciesToHitIDs;
+    my @AllGeneHits;
+    my $num_gene_hits = 0;
+    while (my $line = <$SearchFile>) {
+
+	next if ($line !~ /\[\+\] Search success/);
+
+	
+	$line = <$SearchFile>;
+	$line =~ /\: Exon (\d+)/;
+
+	my $exon_id = $1;
+
+	
+	$line = <$SearchFile>;
+	$line =~ /\: (\S+) \(\S+\)/;
+
+	my $target_species = $1;
+	my $target_range = $2;
+
+
+	$line = <$SearchFile>;
+	$line =~ /\: (\S+) \(Aminos (\S+)\)/;
+
+	my $query_species = $1;
+	my $query_range = $2;
+
+
+	$line = <$SearchFile>;
+	$line =~ /\: (\S+)/;
+
+	my $query_seq = $1;
+
+	my $hit_data = $exon_id.'|'.$target_range.'|'.$query_species.':'.$query_range.'|'.$query_seq;
+
+	$AllGeneHits[++$num_gene_hits] = $hit_data;
+
+	if ($TargetSpeciesToHitIDs{$target_species}) {
+	    $TargetSpeciesToHitIDs{$target_species} = $TargetSpeciesToHitIDs{$target_species}.','.$num_gene_hits;
+	} else {
+	    $TargetSpeciesToHitIDs{$target_species} = $num_gene_hits;
+	}
+	
+    }
+
+    return if ($num_gene_hits == 0);
+
+    my $gene_alis_dir_name = CreateDirectory($genedir.'alignments');
+
+    foreach my $target_species (sort keys %TargetSpeciesToHitIDs) {
+
+	my %ExonToHitIDs;
+	foreach my $hit_id (split(/\,/,$TargetSpeciesToHitIDs{$target_species})) {
+
+	    $AllGeneHits[$hit_id] =~ /^([^\|]+)\|/;
+	    my $exon = $1;
+
+	    if ($ExonToHitIDs{$exon}) {
+		$ExonToHitIDs{$exon} = $ExonToHitIDs{$exon}.','.$hit_id;
+	    } else {
+		$ExonToHitIDs{$exon} = $hit_id;
+	    }
+	}
+
+
+	my $SpeciesOutFile = OpenOutputFile($gene_alis_dir_name.$target_species.'.'.$gene.'.out');
+	
+
+	foreach my $exon (sort {$a <=> $b} keys %ExonToHitIDs) {
+
+	    my @ExonTargetChrs;
+	    my @ExonTargetRanges;
+	    my @ExonQuerySpecies;
+	    my @ExonQueryRanges;
+	    my @ExonQuerySeqs;
+	    my $num_exon_hits = 0;
+	    foreach my $hit_id (split(/\,/,$ExonToHitIDs{$exon})) {
+
+		my @HitData = split(/\|/,$AllGeneHits[$hit_id]);
+
+		$HitData[1] =~ /^([^\:]+)\:(\S+)$/;
+		push(@ExonTargetChrs,$1);
+		push(@ExonTargetRanges,$2);
+
+		$HitData[2] =~ /^([^\:]+)\:(\S+)$/;
+		push(@ExonQuerySpecies,$1);
+		push(@ExonQueryRanges,$2);
+
+		push(@ExonQuerySeqs,$HitData[3]);
+
+		$num_exon_hits++;
+		
+	    }
+
+	    my %AlreadyRecordedTargetChrs;
+	    for (my $exon_hit_id = 0; $exon_hit_id < $num_exon_hits; $exon_hit_id++) {
+
+		my $target_chr = $ExonTargetChrs[$exon_hit_id];
+		
+		# Have we already taken care of hits to this chromosome?
+		next if ($AlreadyRecordedTargetChrs{$target_chr});
+
+		# Well, it's time for this chromosome, then!
+		my @ChrGroupTargetRanges;
+		my @ChrGroupQuerySpecies;
+		my @ChrGroupQueryRanges;
+		my @ChrGroupQuerySeqs;
+		my $num_chr_group_hits = 0;
+		for (my $check_id=$exon_hit_id; $check_id < $num_exon_hits; $check_id++) {
+
+		    if ($ExonTargetChrs[$check_id] eq $target_chr) {
+
+			push(@ChrGroupTargetRanges,$ExonTargetRanges[$check_id]);
+			push(@ChrGroupQuerySpecies,$ExonQuerySpecies[$check_id]);
+			push(@ChrGroupQueryRanges,$ExonQueryRanges[$check_id]);
+			push(@ChrGroupQuerySeqs,$ExonQuerySeqs[$check_id]);
+
+			$num_chr_group_hits++;
+			
+		    }
+		    
+		}
+
+		# Now that we have all of the hits that landed on this chromosome,
+		# the very last thing we need to do identify the overlapping regions
+		my @OverlapGroups;
+		for (my $i=0; $i<$num_chr_group_hits; $i++) {
+		    $OverlapGroups[$i] = 0;
+		}
+
+		my $num_overlap_groups = 0;
+		while (1) {
+
+		    my $base_hit_id = 0;
+		    while ($base_hit_id < $num_chr_group_hits && $OverlapGroups[$base_hit_id]) {
+			$base_hit_id++;
+		    }
+
+		    # If we walked all the way up to our count, we're fully grouped!
+		    last if ($base_hit_id == $num_chr_group_hits);
+
+		    # Build up a grouping of all hits that overlap with
+		    # hits that overlap with ChrGroupTargetRanges[base_hit_id]
+		    my $overlap_range = $ChrGroupTargetRanges[$base_hit_id];
+		    $OverlapGroups[$base_hit_id] = ++$num_overlap_groups;
+
+		    # CHECKPOINT
+		    
+		}
+
+		# Done!
+		$AlreadyRecordedTargetChrs{$target_chr} = 1;
+		
+	    }
+	    
+	}
+
+	close($SpeciesOutFile);
+	
+    }
+
+}
+
+
+
+
+
+###############################################################
+#
+#  Function:  OrigRecordGhostMSAs
+#
+sub OrigRecordGhostMSAs
 {
     my $gene = shift;
 
@@ -2092,8 +2275,8 @@ sub RecordGhostMSAs
 	next if ($line !~ /Search success/);
 
 	$line = <$inf>; # MSA position info.
-	$line =~ /Exons? (\S+)/;
-	my $msa_exons = $1;
+	$line =~ /Exon (\d+)/;
+	my $msa_exon = $1;
 	
 	$line = <$inf>; # Full target search region
 	$line =~ /\: (\S+) \(([^\:]+)\:/;
@@ -2151,7 +2334,7 @@ sub RecordGhostMSAs
 
 	# Time to record this bad boi!
 	my $hash_val = $target_chr.':'.$wide_nucl_range;
-	$hash_val = $hash_val.'|'.$source_species.':'.$source_seq.':'.$source_amino_range.':'.$msa_exons;
+	$hash_val = $hash_val.'|'.$source_species.':'.$source_seq.':'.$source_amino_range.':'.$msa_exon;
 
 	if ($TargetSpeciesToHits{$target_species}) {
 	    $TargetSpeciesToHits{$target_species} = $TargetSpeciesToHits{$target_species}.'&'.$hash_val;
