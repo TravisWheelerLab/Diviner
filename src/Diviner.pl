@@ -2504,7 +2504,11 @@ sub GenMultiAliString
 
 	
 	# Tight! Let's align them query sequences to our target sequence!
-	my @AminoAlignment = split(//,$TransFrames[$frame]);
+	my @TransFrameChars = split(//,$TransFrames[$frame]);
+	my @AminoAlignment;
+	for (my $i=$frame_target_start; $i<=$frame_target_end; $i++) {
+	    push(@AminoAlignment,$TransFrameChars[$i]);
+	}
 	for (my $i=0; $i<$num_frame_users; $i++) {
 	    my @QueryAminos   = split(//,$FrameQuerySeqs[$i]);
 	    my $amino_ali_ref = MultiAminoSeqAli(\@AminoAlignment,\@QueryAminos);
