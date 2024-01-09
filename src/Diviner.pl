@@ -1453,7 +1453,7 @@ sub FindGhostExons
 		}
 
 		# Check 2: Too many gaps
-		if ($num_s1_gaps + $num_s2_gaps > $num_content_cols / 2) {
+		if ($num_s1_gaps + $num_s2_gaps > $num_content_cols / 4) {
 		    $ExonAliQuality[$exon_id] = -2;
 		    next;
 		}
