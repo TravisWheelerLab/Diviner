@@ -1310,17 +1310,21 @@ sub FindGhostExons
 
 	my $j=0;
 	while ($j<$msa_len) {
-	    last if ($MSA[$i][$j] =~ /A-Za-z/);
+	    if ($MSA[$i][$j] =~ /A-Za-z/) {
+		$CodingStarts[$i] = $MapMSA[$i][$j];
+		last;
+	    }
 	    $j++;
 	}
-	$CodingStarts[$i] = $MapMSA[$i][$j];
 
 	$j=$msa_len-1;
 	while ($j>=0) {
-	    last if ($MSA[$i][$j] =~ /A-Za-z/);
+	    if ($MSA[$i][$j] =~ /A-Za-z/) {
+		$CodingEnds[$i] = $MapMSA[$i][$j];
+		last;
+	    }
 	    $j--;
 	}
-	$CodingEnds[$i] = $MapMSA[$i][$j];
 
     }
 
