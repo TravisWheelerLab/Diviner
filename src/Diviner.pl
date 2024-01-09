@@ -2307,8 +2307,9 @@ sub RecordGhostMSAs
 		    my @FrameOutStrs = @{$frame_out_strs_ref};
 
 		    foreach my $frame_out_str (@FrameOutStrs) {
+			next if (!$frame_out_str);
 			print $SpeciesOutFile "$frame_out_str";
-			print $SpeciesOutFile "\n\n==========================================\n\n";
+			print $SpeciesOutFile "\n==========================================\n";
 		    }
 		    
 		}
