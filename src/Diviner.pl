@@ -2308,6 +2308,7 @@ sub RecordGhostMSAs
 
 		    foreach my $frame_out_str (@FrameOutStrs) {
 			print $SpeciesOutFile "$frame_out_str";
+			print $SpeciesOutFile "\n\n==========================================\n\n";
 		    }
 		    
 		}
