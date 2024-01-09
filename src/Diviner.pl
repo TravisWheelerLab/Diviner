@@ -28,7 +28,7 @@ sub FindGhostExons;
 sub FindAliQualityDrops;
 sub RecordGhostMSAs;
 sub GenMultiAliString;
-sub OrigRecordGhostMSAs;
+sub GenQueryLiftString;
 sub GatherBestLocalAlis;
 sub LocalAlign;
 sub GetB62Score;
