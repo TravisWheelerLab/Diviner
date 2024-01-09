@@ -2286,7 +2286,7 @@ sub RecordGhostMSAs
 		# Iterate over all groups of hits that overlap (in terms of their
 		# positions on the target chromosome) and generate an alignment for
 		# each group
-		for (my $hit_group_id = 1; $hit_group_id <= $num_overlap_groups; $hit_group_id) {
+		for (my $hit_group_id = 1; $hit_group_id <= $num_overlap_groups; $hit_group_id++) {
 		    
 		    my @GroupQuerySpecies;
 		    my @GroupQueryRanges;
@@ -2519,6 +2519,10 @@ sub GenMultiAliString
 
 	my $ali_nucl_start_index = 3 * $frame_target_start + $frame;
 	my $ali_nucl_end_index   = 3 * $frame_target_end   + $frame;
+
+	# We don't want to end with the *first* nucleotide of the final codon!
+	if ($revcomp) { $ali_nucl_end_index -= 2; }
+	else          { $ali_nucl_end_index += 2; }
 
 	my @AliNucls;
 	for (my $i=$ali_nucl_start_index; $i<=$ali_nucl_end_index; $i++) {
