@@ -4450,13 +4450,10 @@ sub GenBEDOutFiles
 		$line = <$TargetFile>; # Novelty
 		$line = <$TargetFile>; # Source exons
 
-		my $exon_range;
-		if ($line =~ /MSA exons (\d+\.\.\d+)/) {
-		    $exon_range = $gene.'-exons_'.$1;
-		} elsif ($line =~ /MSA exon (\d+)/) {
-		    $exon_range = $gene.'-exon_'.$1;
-		}
-
+		# Currently we're only doing single exon searches
+		$line =~ /\: Exon (\d+)/;
+		my $exon_range = $gene.'-exon_'.$1;
+		    
 		my $best_pct_id = 0.0;
 		$line = <$TargetFile>;
 		while ($line =~ /\/ (\S+)\% alignment identity/) {
