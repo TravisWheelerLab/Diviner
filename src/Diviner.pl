@@ -2346,7 +2346,7 @@ sub GenMultiAliString
     my $revcomp = 0;
     my $search_target_chr = $target_chr;
     if ($target_chr =~ /\[revcomp\]/) {
-	$search_target_chr =~ s/\[\revcomp]//;
+	$search_target_chr =~ s/\[revcomp\]//;
 	$revcomp = 1;
 	$target_start += 100;
 	$target_end   -= 100;
