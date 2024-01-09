@@ -1303,6 +1303,27 @@ sub FindGhostExons
 	$SpeciesNumAminos[$i] = $amino_index;
     }
 
+    # We're also going to find the limit values for each species' coding region
+    my @CodingStarts;
+    my @CodingEnds;
+    for (my $i=0; $i<$num_species; $i++) {
+
+	my $j=0;
+	while ($j<$msa_len) {
+	    last if ($MSA[$i][$j] =~ /A-Za-z/);
+	    $j++;
+	}
+	$CodingStarts[$i] = $MapMSA[$i][$j];
+
+	$j=$msa_len-1;
+	while ($j>=0) {
+	    last if ($MSA[$i][$j] =~ /A-Za-z/);
+	    $j--;
+	}
+	$CodingEnds[$i] = $MapMSA[$i][$j];
+
+    }
+
     # First off, let's figure out where the starts (inclusive) and ends (exclusive)
     # of our exons are, as well as how many exons we have
     my @ExonStarts;
@@ -1485,8 +1506,8 @@ sub FindGhostExons
 		    my $query_end_amino_index = $IndexMSA[$s2][$ExonS2LastIndex[$exon_id]];
 
 		    # Species 1 target nucleotide range
-		    my $upstream_nucl_s1   = '[start-of-coding-region:'.$MapMSA[$s1][$ExonS1FirstIndex[$exon_id]].']';
-		    my $downstream_nucl_s1 = '[end-of-coding-region:'.$MapMSA[$s1][$ExonS1LastIndex[$exon_id]].']';
+		    my $upstream_nucl_s1   = '[start-of-coding-region:'.$CodingStarts[$s1].']';
+		    my $downstream_nucl_s1 = '[end-of-coding-region:'.$CodingEnds[$s1].']';
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
@@ -1562,8 +1583,8 @@ sub FindGhostExons
 		    my $query_end_amino_index = $IndexMSA[$s1][$ExonS1LastIndex[$exon_id]];
 		    
 		    # Species 2 target nucleotide range
-		    my $upstream_nucl_s2   = '[start-of-coding-region:'.$MapMSA[$s2][$ExonS2FirstIndex[$exon_id]].']';
-		    my $downstream_nucl_s2 = '[end-of-coding-region:'.$MapMSA[$s2][$ExonS2LastIndex[$exon_id]].']';
+		    my $upstream_nucl_s2   = '[start-of-coding-region:'.$CodingStarts[$s2].']';
+		    my $downstream_nucl_s2 = '[end-of-coding-region:'.$CodingEnds[$s2].']';
 		    
 		    my $scanner_exon_id = $exon_id-1;
 		    while ($scanner_exon_id >= 0) {
