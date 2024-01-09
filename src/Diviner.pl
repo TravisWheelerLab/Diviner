@@ -2103,10 +2103,9 @@ sub RecordGhostMSAs
 
 	
 	$line = <$SearchFile>;
-	$line =~ /\: (\S+) \((\S+)\)/;
+	$line =~ /\: (\S+)/;
 
 	my $target_species = $1;
-	my $target_range = $2;
 
 
 	$line = <$SearchFile>;
@@ -2121,14 +2120,29 @@ sub RecordGhostMSAs
 
 	my $query_seq = $1;
 
-	my $hit_data = $exon_id.'|'.$target_range.'|'.$query_species.':'.$query_range.'|'.$query_seq;
 
-	$AllGeneHits[++$num_gene_hits] = $hit_data;
+	$line = <$SearchFile>;
+	$line =~ /Num tblastn Hits\: (\d+)/;
 
-	if ($TargetSpeciesToHitIDs{$target_species}) {
-	    $TargetSpeciesToHitIDs{$target_species} = $TargetSpeciesToHitIDs{$target_species}.','.$num_gene_hits;
-	} else {
-	    $TargetSpeciesToHitIDs{$target_species} = $num_gene_hits;
+	my $num_tblastn_hits = $1;
+	for (my $tblastn_hit=0; $tblastn_hit<$num_tblastn_hits; $tblastn_hit++) {
+
+	    $line = <$SearchFile>;
+	    $line =~ /mapped to $target_species (\S+)/;
+
+	    my $target_range = $1;
+
+	    
+	    my $hit_data = $exon_id.'|'.$target_range.'|'.$query_species.':'.$query_range.'|'.$query_seq;
+
+	    $AllGeneHits[++$num_gene_hits] = $hit_data;
+
+	    if ($TargetSpeciesToHitIDs{$target_species}) {
+		$TargetSpeciesToHitIDs{$target_species} = $TargetSpeciesToHitIDs{$target_species}.','.$num_gene_hits;
+	    } else {
+		$TargetSpeciesToHitIDs{$target_species} = $num_gene_hits;
+	    }
+
 	}
 	
     }
