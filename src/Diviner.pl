@@ -2518,11 +2518,8 @@ sub GenMultiAliString
 
 
 	my $ali_nucl_start_index = 3 * $frame_target_start + $frame;
-	my $ali_nucl_end_index   = 3 * $frame_target_end   + $frame;
+	my $ali_nucl_end_index   = 3 * $frame_target_end   + $frame + 2;
 
-	# We don't want to end with the *first* nucleotide of the final codon!
-	if ($revcomp) { $ali_nucl_end_index -= 2; }
-	else          { $ali_nucl_end_index += 2; }
 
 	my @AliNucls;
 	for (my $i=$ali_nucl_start_index; $i<=$ali_nucl_end_index; $i++) {
