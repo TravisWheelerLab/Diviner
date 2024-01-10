@@ -2188,7 +2188,7 @@ sub RecordGhostMSAs
 	}
 
 
-	my $species_out_file_name = $gene_alis_dir_name.$target_species.'.'.$gene.'.out'
+	my $species_out_file_name = $gene_alis_dir_name.$target_species.'.'.$gene.'.out';
 	my $SpeciesOutFile = OpenOutputFile($species_out_file_name);
 	my $num_species_outputs = 0;
 
