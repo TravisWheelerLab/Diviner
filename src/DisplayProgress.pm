@@ -36,6 +36,7 @@ sub PrintProgress
     my $str = shift;
     $str = $str.' ' while (length($str) < $DispProg_line_len);
     print "$str\r";
+    select()->flush();
 }
 sub ClearProgress { PrintProgress(' '); }
 
@@ -88,13 +89,13 @@ sub ReportProgress
 
 	PrintProgress($status."Checking files and performing setup");
 	
-    } elsif ($part eq 'main-loop' && rand() < 0.3) {
+    } elsif ($part eq 'main-loop') {
 
 	my $completed_genes = $Data[2];
 
 	if ($threadID) {
 
-	    open(my $ProgFile,'>',$DispProg_dirname.$threadID);
+	    open(my $ProgFile,'>>',$DispProg_dirname.$threadID);
 	    print $ProgFile "$completed_genes\n";
 	    close($ProgFile);
 
@@ -105,11 +106,14 @@ sub ReportProgress
 		my $thread_prog_filename = $DispProg_dirname.$threadID; 
 		if (-e $thread_prog_filename) {
 
-		    open(my $ThreadProgress,'<',$thread_prog_filename);
+		    my $ThreadProgress = OpenSystemCommand('tail -n 1 '.$thread_prog_filename);
 		    my $thread_prog_count = <$ThreadProgress>;
 		    close($ThreadProgress);
+
 		    $thread_prog_count =~ /^(\d+)/;
-		    $completed_genes += $1;
+		    my $thread_completion_count = $1;
+		    
+		    $completed_genes += $thread_completion_count;
 		    
 		}
 		
