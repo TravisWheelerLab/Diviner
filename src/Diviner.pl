@@ -2388,14 +2388,15 @@ sub GenMultiAliString
 
     my $revcomp = 0;
     my $search_target_chr = $target_chr;
+    my $extra_search_nucls = 100;
     if ($target_chr =~ /\[revcomp\]/) {
 	$search_target_chr =~ s/\[revcomp\]//;
 	$revcomp = 1;
-	$target_start += 100 + $nucl_buffer_len;
-	$target_end   -= 100 + $nucl_buffer_len;
+	$target_start += $extra_search_nucls + $nucl_buffer_len;
+	$target_end   -= $extra_search_nucls + $nucl_buffer_len;
     } else {
-	$target_start -= 100 + $nucl_buffer_len;
-	$target_end   += 100 + $nucl_buffer_len;
+	$target_start -= $extra_search_nucls + $nucl_buffer_len;
+	$target_end   += $extra_search_nucls + $nucl_buffer_len;
     }
 
     
