@@ -2418,7 +2418,7 @@ sub GenMultiAliString
     # 'nucl_buffer_len' nucleotides on either side of the full
     # chunk of genomic sequence that we pulled
     my @SearchNucls;
-    for (my $i=$nucl_buffer_len; $i<scalar(@SearchNucls)-$nucl_buffer_len; $i++) {
+    for (my $i=$nucl_buffer_len; $i<scalar(@Nucls)-$nucl_buffer_len; $i++) {
 	push(@SearchNucls,$Nucls[$i]);
     }
     
