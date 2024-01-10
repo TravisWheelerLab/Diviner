@@ -1309,14 +1309,14 @@ sub FindGhostExons
     for (my $i=0; $i<$num_species; $i++) {
 
 	for (my $j=0; $j<$msa_len; $j++) {
-	    if ($MSA[$i][$j] =~ /A-Za-z/) {
+	    if ($MapMSA[$i][$j] != 0) {
 		$CodingStarts[$i] = $MapMSA[$i][$j];
 		last;
 	    }
 	}
 
 	for (my $j=$msa_len-1; $j>=0; $j--) {
-	    if ($MSA[$i][$j] =~ /A-Za-z/) {
+	    if ($MapMSA[$i][$j] != 0) {
 		$CodingEnds[$i] = $MapMSA[$i][$j];
 		last;
 	    }
