@@ -2376,7 +2376,11 @@ sub GenMultiAliString
     my @QueryAminoSeqs = @{$query_amino_seqs_ref};
 
     my $num_queries = scalar(@QueryAminoSeqs);
-    
+
+    # How many nucleotides do we want on either side of the
+    # alignment visualization?  (default is 60 because that
+    # gives us a full line before the alignment starts)
+    my $nucl_buffer_len = 60;
 
     $target_range =~ /^(\d+)\.\.(\d+)$/;
     my $target_start = $1;
@@ -2387,11 +2391,11 @@ sub GenMultiAliString
     if ($target_chr =~ /\[revcomp\]/) {
 	$search_target_chr =~ s/\[revcomp\]//;
 	$revcomp = 1;
-	$target_start += 100;
-	$target_end   -= 100;
+	$target_start += 100 + $nucl_buffer_len;
+	$target_end   -= 100 + $nucl_buffer_len;
     } else {
-	$target_start -= 100;
-	$target_end   += 100;
+	$target_start -= 100 + $nucl_buffer_len;
+	$target_end   += 100 + $nucl_buffer_len;
     }
 
     
@@ -2406,14 +2410,23 @@ sub GenMultiAliString
 	$nucl_seq = $nucl_seq.$line;
     }
     close($NuclFile);
-
     my @Nucls = split(//,uc($nucl_seq));
+
+    # In order to guarantee that we don't eat into our designated
+    # buffer we limit the search area to not include the
+    # 'nucl_buffer_len' nucleotides on either side of the full
+    # chunk of genomic sequence that we pulled
+    my @SearchNucls;
+    for (my $i=$nucl_buffer_len; $i<scalar(@SearchNucls)-$nucl_buffer_len; $i++) {
+	push(@SearchNucls,$Nucls[$i]);
+    }
+    
     my @TransFrames;
     for (my $frame=0; $frame<3; $frame++) {
 
 	my $frame_str = '';
-	for (my $codon_start = $frame; $codon_start+2 < scalar(@Nucls); $codon_start += 3) {
-	    my $amino = TranslateCodon($Nucls[$codon_start].$Nucls[$codon_start+1].$Nucls[$codon_start+2]);
+	for (my $codon_start = $frame; $codon_start+2 < scalar(@SearchNucls); $codon_start += 3) {
+	    my $amino = TranslateCodon($SearchNucls[$codon_start].$SearchNucls[$codon_start+1].$SearchNucls[$codon_start+2]);
 	    $frame_str = $frame_str.$amino;
 	}
 
@@ -2548,7 +2561,7 @@ sub GenMultiAliString
 
 	my @AliNucls;
 	for (my $i=$ali_nucl_start_index; $i<=$ali_nucl_end_index; $i++) {
-	    push(@AliNucls,$Nucls[$i]);
+	    push(@AliNucls,$SearchNucls[$i]);
 	}
 
 	
@@ -2556,26 +2569,30 @@ sub GenMultiAliString
 	my $ali_nucl_start = $target_start;
 	my $ali_nucl_end = $ali_nucl_start;
 	if ($revcomp) {
-	    $ali_nucl_start -= $ali_nucl_start_index;
-	    $ali_nucl_end   -= $ali_nucl_end_index;
+	    $ali_nucl_start -= $ali_nucl_start_index + $nucl_buffer_len;
+	    $ali_nucl_end   -= $ali_nucl_end_index   + $nucl_buffer_len;
 	} else {
-	    $ali_nucl_start += $ali_nucl_start_index;
-	    $ali_nucl_end   += $ali_nucl_end_index;
+	    $ali_nucl_start += $ali_nucl_start_index + $nucl_buffer_len;
+	    $ali_nucl_end   += $ali_nucl_end_index   + $nucl_buffer_len;
 	}
 
 	
 	# The very last thing we'll do before starting work
 	# on the visualization matrix is to pull in 60 nucleotides
 	# on either side of the alignment region.
-	my $nucl_buffer_len = 60;
-
+	#
+	# MATH NOTE: Because the position should shift over
+	#   nucl_buffer_len nucleotides to switch indices from
+	#   SearchNucls to Nucls, our left buffer starts at
+	#   'ali_nucl_start_index'
+	#
 	my @LeftNuclBuffer;
-	for (my $i=$ali_nucl_start_index-$nucl_buffer_len; $i<$ali_nucl_start_index; $i++) {
+	for (my $i=$ali_nucl_start_index; $i<$ali_nucl_start_index+$nucl_buffer_len; $i++) {
 	    push(@LeftNuclBuffer,lc($Nucls[$i]));
 	}
 
 	my @RightNuclBuffer;
-	for (my $i=$ali_nucl_end_index+1; $i<=$ali_nucl_end_index+$nucl_buffer_len; $i++) {
+	for (my $i=$ali_nucl_end_index-$nucl_buffer_len+1; $i<=$ali_nucl_end_index; $i++) {
 	    push(@RightNuclBuffer,lc($Nucls[$i]));
 	}
 
