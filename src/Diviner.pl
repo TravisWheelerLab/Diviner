@@ -2188,8 +2188,9 @@ sub RecordGhostMSAs
 	}
 
 
-	my $SpeciesOutFile = OpenOutputFile($gene_alis_dir_name.$target_species.'.'.$gene.'.out');
-	
+	my $species_out_file_name = $gene_alis_dir_name.$target_species.'.'.$gene.'.out'
+	my $SpeciesOutFile = OpenOutputFile($species_out_file_name);
+	my $num_species_outputs = 0;
 
 	foreach my $exon (sort {$a <=> $b} keys %ExonToHitIDs) {
 
@@ -2328,6 +2329,7 @@ sub RecordGhostMSAs
 		    my @FrameOutStrs = @{$frame_out_strs_ref};
 
 		    foreach my $frame_out_str (@FrameOutStrs) {
+			$num_species_outputs++;
 			next if (!$frame_out_str);
 			print $SpeciesOutFile "$frame_out_str";
 			print $SpeciesOutFile "\n  ==========================================\n\n";
@@ -2344,6 +2346,7 @@ sub RecordGhostMSAs
 	}
 
 	close($SpeciesOutFile);
+	RunSystemCommand("rm \"$species_out_file_name\"") if ($num_species_outputs == 0);
 	
     }
 
