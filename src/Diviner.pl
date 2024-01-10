@@ -2593,7 +2593,7 @@ sub GenMultiAliString
 	}
 
 	my @RightNuclBuffer;
-	for (my $i=$ali_nucl_end_index-$nucl_buffer_len+1; $i<=$ali_nucl_end_index; $i++) {
+	for (my $i=$ali_nucl_end_index+$nucl_buffer_len+1; $i<=$ali_nucl_end_index+(2*$nucl_buffer_len); $i++) {
 	    push(@RightNuclBuffer,lc($Nucls[$i]));
 	}
 
