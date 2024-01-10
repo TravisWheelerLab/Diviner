@@ -1308,22 +1308,18 @@ sub FindGhostExons
     my @CodingEnds;
     for (my $i=0; $i<$num_species; $i++) {
 
-	my $j=0;
-	while ($j<$msa_len) {
+	for (my $j=0; $j<$msa_len; $j++) {
 	    if ($MSA[$i][$j] =~ /A-Za-z/) {
 		$CodingStarts[$i] = $MapMSA[$i][$j];
 		last;
 	    }
-	    $j++;
 	}
 
-	$j=$msa_len-1;
-	while ($j>=0) {
+	for (my $j=$msa_len-1; $j>=0; $j--) {
 	    if ($MSA[$i][$j] =~ /A-Za-z/) {
 		$CodingEnds[$i] = $MapMSA[$i][$j];
 		last;
 	    }
-	    $j--;
 	}
 
     }
