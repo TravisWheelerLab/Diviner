@@ -2769,10 +2769,12 @@ sub GenMultiAliString
 	if (IsGTFAnnotated($target_species,$search_target_chr,$ali_nucl_start,$ali_nucl_end)) {
 	    $gtf_overlap_str = "Overlaps with GTF entry";
 	}
+
+	my $out_exon_id = $exon_id+1; # Exon indices start at 1, not 0
 	
 	my $metadata_str = "\n  Target : $target_species $target_chr:$ali_nucl_start..$ali_nucl_end\n";
 	$metadata_str    = $metadata_str."         : $gtf_overlap_str\n";
-	$metadata_str    = $metadata_str."  Query  : Exon $exon_id (Species-wise MSA)\n";
+	$metadata_str    = $metadata_str."  Query  : Exon $out_exon_id (Species-wise MSA)\n";
 
 	for (my $i=0; $i<$num_frame_users; $i++) {
 
