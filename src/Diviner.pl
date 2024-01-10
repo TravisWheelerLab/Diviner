@@ -2330,7 +2330,7 @@ sub RecordGhostMSAs
 		    foreach my $frame_out_str (@FrameOutStrs) {
 			next if (!$frame_out_str);
 			print $SpeciesOutFile "$frame_out_str";
-			print $SpeciesOutFile "\n==========================================\n";
+			print $SpeciesOutFile "\n  ==========================================\n\n";
 		    }
 		    
 		}
@@ -2796,12 +2796,11 @@ sub GenMultiAliString
 		}
 		$ali_vis_str = $ali_vis_str."\n";
 	    }
-	    $ali_vis_str = $ali_vis_str."\n";
+	    $ali_vis_str = $ali_vis_str."\n\n";
 
 	    $ali_vis_col = $line_break_col;
 	    
 	}
-	$ali_vis_str = $ali_vis_str."\n";
 
 	$FrameOutStrs[$frame] = $metadata_str.$ali_vis_str;
 	
