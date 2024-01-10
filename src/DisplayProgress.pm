@@ -104,19 +104,17 @@ sub ReportProgress
 	    for (my $i=1; $i<$DispProg_cpus; $i++) {
 
 		my $thread_prog_filename = $DispProg_dirname.$threadID; 
-		if (-e $thread_prog_filename) {
+		next if (!(-e $thread_prog_filename));
 
-		    my $ThreadProgress = OpenSystemCommand('tail -n 1 '.$thread_prog_filename);
-		    my $thread_prog_count = <$ThreadProgress>;
-		    close($ThreadProgress);
-
-		    $thread_prog_count =~ /^(\d+)/;
-		    my $thread_completion_count = $1;
-		    
-		    $completed_genes += $thread_completion_count;
-		    
-		}
+		my $ThreadProgress = OpenSystemCommand('tail -n 1 '.$thread_prog_filename);
+		my $thread_prog_count = <$ThreadProgress>;
+		close($ThreadProgress);
 		
+		$thread_prog_count =~ /^(\d+)/;
+		my $thread_completion_count = $1;
+		
+		$completed_genes += $thread_completion_count;
+		    
 	    }
 
 	    PrintProgress($status."$completed_genes of $DispProg_total_genes genes examined");
