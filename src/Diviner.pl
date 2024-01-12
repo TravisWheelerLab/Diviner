@@ -2146,7 +2146,6 @@ sub RecordGhostMSAs
 	$line =~ /Num tblastn Hits\: (\d+)/;
 
 	my $num_tblastn_hits = $1;
-	my %RedundancyCheck;
 	for (my $tblastn_hit=0; $tblastn_hit<$num_tblastn_hits; $tblastn_hit++) {
 
 	    $line = <$SearchFile>;
@@ -2156,12 +2155,6 @@ sub RecordGhostMSAs
 
 	    
 	    my $hit_data = $exon_id.'|'.$target_range.'|'.$query_species.':'.$query_range.'|'.$query_seq;
-
-	    if ($RedundancyCheck{$hit_data}) {
-		next;
-	    } else {
-		$RedundancyCheck{$hit_data} = 1;
-	    }
 
 	    $AllGeneHits[++$num_gene_hits] = $hit_data;
 
@@ -2321,11 +2314,25 @@ sub RecordGhostMSAs
 		    my @GroupQueryRanges;
 		    my @GroupQuerySeqs;
 
+		    # NOTE: This isn't ideal, but for now we're going to have a
+		    #   Band-Aid check for duplicate species and defer to the first
+		    #   entry (as far as I've seen, when this happens it's redundant,
+		    #   but I'd like to know WHY we're getting redundancy in these
+		    #   lists...).
+		    my %RedundantQuery;
 		    for (my $i=0; $i<$num_chr_group_hits; $i++) {
 			if ($OverlapGroups[$i] == $hit_group_id) {
+
+			    if ($RedundantQuery{$ChrGroupQuerySpecies[$i]}) {
+				next;
+			    } else {
+				$RedundantQuery{$ChrGroupQuerySpecies[$i]} = 1;
+			    }
+			    
 			    push(@GroupQuerySpecies,$ChrGroupQuerySpecies[$i]);
 			    push(@GroupQueryRanges,$ChrGroupQueryRanges[$i]);
 			    push(@GroupQuerySeqs,$ChrGroupQuerySeqs[$i]);
+
 			}
 		    }
 
