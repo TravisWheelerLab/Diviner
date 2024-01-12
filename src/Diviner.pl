@@ -2146,6 +2146,7 @@ sub RecordGhostMSAs
 	$line =~ /Num tblastn Hits\: (\d+)/;
 
 	my $num_tblastn_hits = $1;
+	my %RedundancyCheck;
 	for (my $tblastn_hit=0; $tblastn_hit<$num_tblastn_hits; $tblastn_hit++) {
 
 	    $line = <$SearchFile>;
@@ -2155,6 +2156,12 @@ sub RecordGhostMSAs
 
 	    
 	    my $hit_data = $exon_id.'|'.$target_range.'|'.$query_species.':'.$query_range.'|'.$query_seq;
+
+	    if ($RedundancyCheck{$hit_data}) {
+		next;
+	    } else {
+		$RedundancyCheck{$hit_data} = 1;
+	    }
 
 	    $AllGeneHits[++$num_gene_hits] = $hit_data;
 
