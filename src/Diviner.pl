@@ -2314,11 +2314,25 @@ sub RecordGhostMSAs
 		    my @GroupQueryRanges;
 		    my @GroupQuerySeqs;
 
+		    # NOTE: This isn't ideal, but for now we're going to have a
+		    #   Band-Aid check for duplicate species and defer to the first
+		    #   entry (as far as I've seen, when this happens it's redundant,
+		    #   but I'd like to know WHY we're getting redundancy in these
+		    #   lists...).
+		    my %RedundantQuery;
 		    for (my $i=0; $i<$num_chr_group_hits; $i++) {
 			if ($OverlapGroups[$i] == $hit_group_id) {
+
+			    if ($RedundantQuery{$ChrGroupQuerySpecies[$i]}) {
+				next;
+			    } else {
+				$RedundantQuery{$ChrGroupQuerySpecies[$i]} = 1;
+			    }
+			    
 			    push(@GroupQuerySpecies,$ChrGroupQuerySpecies[$i]);
 			    push(@GroupQueryRanges,$ChrGroupQueryRanges[$i]);
 			    push(@GroupQuerySeqs,$ChrGroupQuerySeqs[$i]);
+
 			}
 		    }
 
