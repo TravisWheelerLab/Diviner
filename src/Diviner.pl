@@ -2636,9 +2636,11 @@ sub GenMultiAliString
 	# (and, simultaneously, our match / mismatch counts for each source)
 	my @QueryAliMatches;
 	my @QueryAliMismatches;
+	my @QueryAliGaps;
 	for (my $i=0; $i<$num_frame_users; $i++) {
 	    $QueryAliMatches[$i] = 0;
 	    $QueryAliMismatches[$i] = 0;
+	    $QueryAliGaps[$i] = 0;
 	}
 	
 	my $nucl_chars_pos = 0;
@@ -2674,7 +2676,7 @@ sub GenMultiAliString
 		if ($insertion) {
 		    if ($query_ali_amino =~ /[A-Z]/) {
 			$VisMatrix[2+$j][$vis_matrix_len] = lc($query_ali_amino);
-			$QueryAliMismatches[$j]++;
+			$QueryAliGaps[$j]++;
 		    } else {
 			$VisMatrix[2+$j][$vis_matrix_len] = '-';
 		    }
@@ -2691,7 +2693,7 @@ sub GenMultiAliString
 		    }
 		} else {
 		    $VisMatrix[2+$j][$vis_matrix_len] = $query_ali_amino; # Presumably '-'
-		    $QueryAliMismatches[$j]++;
+		    $QueryAliGaps[$j]++;
 		}
 
 	    }
@@ -2736,7 +2738,7 @@ sub GenMultiAliString
 	    while ($ali_col < $vis_matrix_len && $VisMatrix[$ali_row][$ali_col] !~ /\.|[a-z]/) {
 		if ($VisMatrix[$ali_row][$ali_col] eq '-' && $VisMatrix[0][$ali_col] =~ /[A-Z]/) {
 		    $VisMatrix[$ali_row][$ali_col] = ' ';
-		    $QueryAliMismatches[$i]--;
+		    $QueryAliGaps[$i]--;
 		}
 		$ali_col++;
 	    }
@@ -2745,7 +2747,7 @@ sub GenMultiAliString
 	    while ($ali_col >= 0 && $VisMatrix[$ali_row][$ali_col] !~ /\.|[a-z]/) {
 		if ($VisMatrix[$ali_row][$ali_col] eq '-' && $VisMatrix[0][$ali_col] =~ /[A-Z]/) {
 		    $VisMatrix[$ali_row][$ali_col] = ' ';
-		    $QueryAliMismatches[$i]--;
+		    $QueryAliGaps[$i]--;
 		}
 		$ali_col--;
 	    }
@@ -2806,8 +2808,10 @@ sub GenMultiAliString
 	    $query_ali_end   += $query_start_amino;
 
 	    my $query_matches = $QueryAliMatches[$i];
-	    my $total_query_cols = $QueryAliMatches[$i] + $QueryAliMismatches[$i];
-	    my $query_ali_pct_id = int(1000.0 * $query_matches / $total_query_cols) / 10.0;
+	    #my $total_query_cols = $QueryAliMatches[$i] + $QueryAliMismatches[$i] + $QueryAliGaps[$i];
+	    #my $query_ali_pct_id = int(1000.0 * $query_matches / $total_query_cols) / 10.0;
+	    my $query_gap_free_cols = $QueryAliMatches[$i] + $QueryAliMismatches[$i];
+	    my $query_ali_pct_id = int(1000.0 * $query_matches / $query_gap_free_cols) / 10.0;
 
 	    my $query_lift_str = GenQueryLiftString($genedir,$query_species,$query_ali_start,$query_ali_end);
 
